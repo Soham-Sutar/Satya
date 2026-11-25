@@ -68,6 +68,16 @@ export interface UIStrings {
   readinessSubtitle: string;
   draftToggleShow: string;
   draftToggleHide: string;
+  navAskSatya: string;
+  navLawsPolicies: string;
+  policySearchTitle: string;
+  policySearchSubtitle: string;
+  policySearchPlaceholder: string;
+  policySearchBtn: string;
+  policyShowAllBtn: string;
+  policyMatchedProvisions: string;
+  policyNoMatch: string;
+  policyTopics: { label: string; query: string }[];
   samplePrompts: { label: string; prompt: string }[];
   followupSuggestions: { label: string; prompt: string }[];
 }
@@ -170,6 +180,27 @@ export const UI_COPY: Record<SupportedLanguage, UIStrings> = {
       "Self-check of information commonly needed before approaching NCH (1915) or filing via e-Jagriti. Does not determine legal validity or outcome.",
     draftToggleShow: "Prepare neutral complaint summary draft (for your review)",
     draftToggleHide: "Hide neutral complaint summary draft",
+    navAskSatya: "Ask Satya (Chat)",
+    navLawsPolicies: "Laws & Policies",
+    policySearchTitle: "Consumer Laws, Rules & Policies Explorer",
+    policySearchSubtitle:
+      "Search any topic within Indian Consumer Rights & Protection to view all applicable Acts, Rules, Regulations, CCPA Guidelines, and official Government policies.",
+    policySearchPlaceholder:
+      "Search topic (e.g. e-commerce, defective goods, dark patterns, misleading ads, jurisdiction, mediation, refund)...",
+    policySearchBtn: "Search Laws",
+    policyShowAllBtn: "Show All Indexed Laws",
+    policyMatchedProvisions: "Matching Sections / Rules / Clauses",
+    policyNoMatch: "No indexed consumer-protection policies matched that query.",
+    policyTopics: [
+      { label: "E-Commerce & Grievance Officer", query: "ecommerce grievance officer" },
+      { label: "Defective Goods & Remedies", query: "defective goods remove replace refund" },
+      { label: "Deficiency in Service", query: "deficiency in service" },
+      { label: "Misleading Ads & Endorsements", query: "misleading advertisement endorsement" },
+      { label: "Dark Patterns", query: "dark patterns" },
+      { label: "Jurisdiction & Filing Fees", query: "jurisdiction fee district state national commission" },
+      { label: "Product Liability", query: "product liability" },
+      { label: "Mediation & NCH Helpline", query: "mediation helpline 1915" },
+    ],
     samplePrompts: [
       {
         label: "Damaged phone bought online",
@@ -298,6 +329,27 @@ export const UI_COPY: Record<SupportedLanguage, UIStrings> = {
       "NCH (1915) ಅಥವಾ e-Jagriti ಮೂಲಕ ದೂರು ಸಲ್ಲಿಸುವ ಮೊದಲು ಸಾಮಾನ್ಯವಾಗಿ ಬೇಕಾಗುವ ದಾಖಲೆಗಳ ಸ್ವಯಂ-ಪರಿಶೀಲನೆ.",
     draftToggleShow: "ತಟಸ್ಥ ದೂರು ಸಾರಾಂಶದ ಕರಡು ಸಿದ್ಧಪಡಿಸಿ",
     draftToggleHide: "ದೂರು ಸಾರಾಂಶ ಕರಡು ಮರೆಮಾಡಿ",
+    navAskSatya: "ಸತ್ಯವನ್ನು ಕೇಳಿ (ಚಾಟ್)",
+    navLawsPolicies: "ಕಾಯ್ದೆಗಳು ಮತ್ತು ನೀತಿಗಳು",
+    policySearchTitle: "ಗ್ರಾಹಕ ಕಾಯ್ದೆಗಳು, ನಿಯಮಗಳು ಮತ್ತು ನೀತಿಗಳ ಶೋಧಕ",
+    policySearchSubtitle:
+      "ಭಾರತೀಯ ಗ್ರಾಹಕ ಹಕ್ಕುಗಳು ಮತ್ತು ರಕ್ಷಣೆಗೆ ಸಂಬಂಧಿಸಿದ ಯಾವುದೇ ವಿಷಯವನ್ನು ಹುಡುಕಿ, ಸಂಬಂಧಿತ ಕಾಯ್ದೆಗಳು, ನಿಯಮಗಳು ಮತ್ತು CCPA ಮಾರ್ಗಸೂಚಿಗಳನ್ನು ನೋಡಿ.",
+    policySearchPlaceholder:
+      "ವಿಷಯ ಹುಡುಕಿ (ಉದಾ. ಇ-ಕಾಮರ್ಸ್, ದೋಷಪೂರಿತ ಸರಕು, ಜಾಹೀರಾತು, ನ್ಯಾಯವ್ಯಾಪ್ತಿ, ಮಧ್ಯಸ್ಥಿಕೆ)...",
+    policySearchBtn: "ಕಾಯ್ದೆ ಹುಡುಕಿ",
+    policyShowAllBtn: "ಎಲ್ಲಾ ಕಾಯ್ದೆಗಳನ್ನು ತೋರಿಸಿ",
+    policyMatchedProvisions: "ಸಂಬಂಧಿತ ಸೆಕ್ಷನ್‌ಗಳು / ನಿಯಮಗಳು",
+    policyNoMatch: "ಈ ವಿಷಯಕ್ಕೆ ಸಂಬಂಧಿಸಿದ ಅನುಮೋದಿತ ಗ್ರಾಹಕ-ರಕ್ಷಣಾ ಕಾಯ್ದೆಗಳು ಕಂಡುಬಂದಿಲ್ಲ.",
+    policyTopics: [
+      { label: "ಇ-ಕಾಮರ್ಸ್ ನಿಯಮಗಳು", query: "ecommerce grievance officer" },
+      { label: "ದೋಷಪೂರಿತ ಸರಕುಗಳು", query: "defective goods remove replace refund" },
+      { label: "ಸೇವೆಯಲ್ಲಿ ಕೊರತೆ", query: "deficiency in service" },
+      { label: "ತಪ್ಪುದಾರಿಗೆಳೆಯುವ ಜಾಹೀರಾತು", query: "misleading advertisement endorsement" },
+      { label: "ಡಾರ್ಕ್ ಪ್ಯಾಟರ್ನ್‌ಗಳು", query: "dark patterns" },
+      { label: "ಆಯೋಗದ ನ್ಯಾಯವ್ಯಾಪ್ತಿ ಮತ್ತು ಶುಲ್ಕ", query: "jurisdiction fee district state national commission" },
+      { label: "ಉತ್ಪನ್ನ ಹೊಣೆಗಾರಿಕೆ", query: "product liability" },
+      { label: "ಮಧ್ಯಸ್ಥಿಕೆ ಮತ್ತು NCH ಸಹಾಯವಾಣಿ", query: "mediation helpline 1915" },
+    ],
     samplePrompts: [
       {
         label: "ಆನ್‌ಲೈನ್‌ನಲ್ಲಿ ಹಾನಿಗೊಳಗಾದ ಫೋನ್",
@@ -421,6 +473,27 @@ export const UI_COPY: Record<SupportedLanguage, UIStrings> = {
       "NCH (1915) या e-Jagriti पर शिकायत से पहले आवश्यक सामान्य जानकारी की स्व-जांच।",
     draftToggleShow: "तटस्थ शिकायत सारांश ड्राफ्ट तैयार करें (समीक्षा हेतु)",
     draftToggleHide: "शिकायत सारांश ड्राफ्ट छिपाएं",
+    navAskSatya: "सत्य से पूछें (चैट)",
+    navLawsPolicies: "कानून और नीतियां",
+    policySearchTitle: "उपभोक्ता कानून, नियम एवं नीतियां खोजें",
+    policySearchSubtitle:
+      "भारतीय उपभोक्ता अधिकार और संरक्षण से जुड़ा कोई भी विषय खोजें और उससे संबंधित सभी अधिनियम, नियम, CCPA दिशानिर्देश और आधिकारिक नीतियां देखें।",
+    policySearchPlaceholder:
+      "विषय खोजें (जैसे ई-कॉमर्स, दोषपूर्ण उत्पाद, भ्रामक विज्ञापन, क्षेत्राधिकार, मध्यस्थता, रिफंड)...",
+    policySearchBtn: "कानून खोजें",
+    policyShowAllBtn: "सभी अनुमोदित कानून दिखाएं",
+    policyMatchedProvisions: "संबंधित धाराएं / नियम / खंड",
+    policyNoMatch: "इस विषय से संबंधित कोई अनुमोदित उपभोक्ता-संरक्षण नीति नहीं मिली।",
+    policyTopics: [
+      { label: "ई-कॉमर्स और शिकायत अधिकारी", query: "ecommerce grievance officer" },
+      { label: "दोषपूर्ण वस्तुएं एवं उपचार", query: "defective goods remove replace refund" },
+      { label: "सेवा में कमी", query: "deficiency in service" },
+      { label: "भ्रामक विज्ञापन", query: "misleading advertisement endorsement" },
+      { label: "डार्क पैटर्न दिशानिर्देश", query: "dark patterns" },
+      { label: "आयोग क्षेत्राधिकार और शुल्क", query: "jurisdiction fee district state national commission" },
+      { label: "उत्पाद दायित्व", query: "product liability" },
+      { label: "मध्यस्थता और NCH 1915", query: "mediation helpline 1915" },
+    ],
     samplePrompts: [
       {
         label: "ऑनलाइन खरीदा टूटा फोन",

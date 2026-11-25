@@ -146,3 +146,54 @@ export interface CoverageResponse {
   approved_source_count: number;
   total_chunk_count: number;
 }
+
+export interface TranslateThreadItem {
+  id: string;
+  question: string;
+  response: ChatResponse;
+}
+
+export interface TranslateThreadResponse {
+  target_language: SupportedLanguage;
+  items: TranslateThreadItem[];
+  translated: boolean;
+}
+
+export interface PolicyProvisionMatch {
+  chunk_id: string;
+  section?: string | null;
+  subsection?: string | null;
+  rule?: string | null;
+  paragraph?: string | null;
+  heading?: string | null;
+  page_start?: number | null;
+  page_end?: number | null;
+  snippet: string;
+  exact_passage: string;
+}
+
+export interface PolicyLawMatch {
+  source_id: string;
+  title: string;
+  issuing_authority: string;
+  authority_type: string;
+  document_type: string;
+  status: SourceStatus;
+  publication_date?: string | null;
+  effective_from?: string | null;
+  retrieved_at: string;
+  version_label: string;
+  official_url: string;
+  notes?: string | null;
+  topic_tags: string[];
+  matching_provisions: PolicyProvisionMatch[];
+}
+
+export interface PolicySearchResponse {
+  query: string;
+  language: SupportedLanguage;
+  in_scope: boolean;
+  out_of_scope_message?: string | null;
+  total_laws_matched: number;
+  laws: PolicyLawMatch[];
+}

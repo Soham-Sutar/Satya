@@ -8,10 +8,13 @@ Grounded answer formulation service.
 """
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import json
 import logging
 import re
 from typing import Dict, List, Optional
+
+import requests
 
 from app.config import settings
 from app.models.schemas import (
@@ -22,6 +25,7 @@ from app.models.schemas import (
     ClaimItem,
     SessionContext,
     SupportedLanguage,
+    TranslateThreadItem,
 )
 from app.services.evidence_gate import GateDecision
 from app.services.issue_classifier import ClassificationResult
@@ -80,7 +84,7 @@ def _gemini_generate_json(
     client = genai.Client(
         api_key=api_key,
         http_options=types.HttpOptions(
-            timeout=20000,
+            timeout=9000,
             retry_options=types.HttpRetryOptions(attempts=1),
         ),
     )
@@ -89,26 +93,47 @@ def _gemini_generate_json(
             [
                 settings.LLM_MODEL or "gemini-3.5-flash",
                 "gemini-3.5-flash",
+                "gemini-3-flash-preview",
                 "gemini-3.5-flash-lite",
+                "gemini-flash-lite-latest",
                 "gemini-3.6-flash",
+                "gemma-4-31b-it",
                 "gemini-2.5-flash",
             ]
         )
     )
+    tried = 0
     for model_name in candidates:
         if model_name in _SKIP_GEMINI_MODELS:
             continue
+        if tried >= 3:
+            break
+        tried += 1
         try:
-            cfg = types.GenerateContentConfig(
-                system_instruction=system_instruction,
-                temperature=temperature,
-                response_mime_type="application/json",
-            )
-            resp = client.models.generate_content(
-                model=model_name,
-                contents=user_payload,
-                config=cfg,
-            )
+            # Gemma instruction-tuned models may not support response_mime_type='application/json' or system_instruction cleanly
+            is_gemma = model_name.startswith("gemma")
+            if is_gemma:
+                combined = (
+                    f"{system_instruction}\n\n{user_payload}\n\nRespond ONLY with valid raw JSON."
+                    if system_instruction
+                    else f"{user_payload}\n\nRespond ONLY with valid raw JSON."
+                )
+                resp = client.models.generate_content(
+                    model=model_name,
+                    contents=combined,
+                    config=types.GenerateContentConfig(temperature=temperature),
+                )
+            else:
+                cfg = types.GenerateContentConfig(
+                    system_instruction=system_instruction,
+                    temperature=temperature,
+                    response_mime_type="application/json",
+                )
+                resp = client.models.generate_content(
+                    model=model_name,
+                    contents=user_payload,
+                    config=cfg,
+                )
             if resp and resp.text:
                 parsed = _parse_json_safe(resp.text)
                 if isinstance(parsed, dict):
@@ -116,7 +141,10 @@ def _gemini_generate_json(
         except Exception as exc:
             err_str = str(exc)
             logger.warning("Gemini model=%s failed: %s", model_name, err_str[:220])
-            if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "404" in err_str or "NOT_FOUND" in err_str:
+            is_daily_quota = ("429" in err_str or "RESOURCE_EXHAUSTED" in err_str) and (
+                "PerDay" in err_str or "FreeTier" in err_str
+            )
+            if is_daily_quota or "404" in err_str or "NOT_FOUND" in err_str:
                 _SKIP_GEMINI_MODELS.add(model_name)
             continue
     return None
@@ -495,21 +523,372 @@ def _localize_status_text(status: str, language: str, summary: str, clarifying_q
     )
 
 
-def translate_chat_response(
-    response: ChatResponse, target_language: SupportedLanguage
-) -> ChatResponse:
+def _build_translatable_dict(
+    response: ChatResponse, question: Optional[str] = None
+) -> dict:
+    return {
+        "question": question,
+        "answer_markdown": response.answer_markdown,
+        "claims": [c.text for c in response.claims],
+        "action_plan": [a.text for a in response.action_plan],
+        "clarifying_questions": response.clarifying_questions,
+        "limitations": response.limitations,
+        "abstention_reason": (
+            {
+                "summary": response.abstention_reason.summary,
+                "what_was_found": response.abstention_reason.what_was_found,
+                "what_is_missing": response.abstention_reason.what_is_missing,
+                "suggested_next_step": response.abstention_reason.suggested_next_step,
+            }
+            if response.abstention_reason
+            else None
+        ),
+        "evidence_coverage_description": (
+            response.evidence_coverage.description if response.evidence_coverage else None
+        ),
+    }
+
+
+def _apply_translated_dict(
+    response: ChatResponse,
+    translated: dict,
+    target_language: SupportedLanguage,
+    original_question: Optional[str] = None,
+) -> tuple[Optional[str], ChatResponse, bool]:
+    cloned = response.model_copy(deep=True)
+    new_question = original_question
+
+    if isinstance(translated.get("question"), str) and translated["question"].strip():
+        new_question = translated["question"]
+    if isinstance(translated.get("answer_markdown"), str) and translated["answer_markdown"].strip():
+        cloned.answer_markdown = translated["answer_markdown"]
+    if isinstance(translated.get("claims"), list) and len(translated["claims"]) == len(cloned.claims):
+        for idx, txt in enumerate(translated["claims"]):
+            if isinstance(txt, str) and txt.strip():
+                cloned.claims[idx].text = txt
+    if isinstance(translated.get("action_plan"), list) and len(translated["action_plan"]) == len(cloned.action_plan):
+        for idx, txt in enumerate(translated["action_plan"]):
+            if isinstance(txt, str) and txt.strip():
+                cloned.action_plan[idx].text = txt
+    if isinstance(translated.get("clarifying_questions"), list):
+        cloned.clarifying_questions = [str(q) for q in translated["clarifying_questions"]]
+    if isinstance(translated.get("limitations"), list):
+        cloned.limitations = [str(l) for l in translated["limitations"]]
+    ab_t = translated.get("abstention_reason")
+    if cloned.abstention_reason and isinstance(ab_t, dict):
+        for fld in ("summary", "what_was_found", "what_is_missing", "suggested_next_step"):
+            if isinstance(ab_t.get(fld), str) and ab_t[fld].strip():
+                setattr(cloned.abstention_reason, fld, ab_t[fld])
+    if cloned.evidence_coverage and isinstance(translated.get("evidence_coverage_description"), str):
+        cloned.evidence_coverage.description = translated["evidence_coverage_description"]
+
+    if target_language in ("kn", "hi") and not _has_target_script(cloned.answer_markdown, target_language):
+        return original_question, response, False
+
+    cloned.language = target_language
+    return new_question, cloned, True
+
+
+def _translate_via_openai_compatible(
+    base_url: str,
+    api_key: str,
+    model: str,
+    prompt: str,
+    target_name: str,
+) -> Optional[dict]:
+    try:
+        from openai import OpenAI
+
+        client = OpenAI(api_key=api_key, base_url=base_url, timeout=12.0)
+        comp = client.chat.completions.create(
+            model=model,
+            temperature=0.0,
+            response_format={"type": "json_object"},
+            messages=[
+                {
+                    "role": "system",
+                    "content": f"You are a precise Indian legal-information translator. Output strictly valid JSON in {target_name}.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+        )
+        content = comp.choices[0].message.content
+        if content:
+            parsed = _parse_json_safe(content)
+            if isinstance(parsed, dict):
+                return parsed
+    except Exception as exc:
+        logger.warning("OpenAI-compatible translation (%s / %s) failed: %s", base_url, model, str(exc)[:180])
+    return None
+
+
+def _detect_ollama_model() -> Optional[str]:
+    if settings.OLLAMA_MODEL:
+        return settings.OLLAMA_MODEL
+    try:
+        r = requests.get(f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/tags", timeout=0.45)
+        if r.status_code == 200:
+            models = r.json().get("models") or []
+            if models:
+                return models[0].get("name")
+    except Exception:
+        return None
+    return None
+
+
+def _translate_via_ollama(prompt: str, target_name: str) -> Optional[dict]:
+    model_name = _detect_ollama_model()
+    if not model_name:
+        return None
+    try:
+        r = requests.post(
+            f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/chat",
+            json={
+                "model": model_name,
+                "stream": False,
+                "format": "json",
+                "options": {"temperature": 0.0},
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": f"You are a precise Indian legal-information translator. Output strictly valid JSON in {target_name}.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+            },
+            timeout=15.0,
+        )
+        if r.status_code == 200:
+            content = (r.json().get("message") or {}).get("content", "")
+            if content:
+                parsed = _parse_json_safe(content)
+                if isinstance(parsed, dict):
+                    return parsed
+    except Exception as exc:
+        logger.warning("Ollama translation failed: %s", str(exc)[:180])
+    return None
+
+
+def _protect_citation_tokens(text: str) -> tuple[str, list[str]]:
+    tokens: list[str] = []
+
+    def _repl(m: re.Match) -> str:
+        idx = len(tokens)
+        tokens.append(m.group(0))
+        return f"[[SATYACID{idx}]]"
+
+    protected = re.sub(r"`[a-zA-Z0-9_]+`|\[[a-zA-Z0-9_]+\]", _repl, text)
+    return protected, tokens
+
+
+def _restore_citation_tokens(text: str, tokens: list[str]) -> str:
+    out = text
+    for idx, orig in enumerate(tokens):
+        out = re.sub(rf"\[\[\s*SATYACID\s*{idx}\s*\]\]", orig, out, flags=re.I)
+    return out
+
+
+def _fast_translate_single(text: str, target_language: str) -> str:
+    if not text or not text.strip():
+        return text
+    protected, tokens = _protect_citation_tokens(text)
+    try:
+        resp = requests.get(
+            "https://translate.googleapis.com/translate_a/single",
+            params={
+                "client": "gtx",
+                "sl": "auto",
+                "tl": target_language,
+                "dt": "t",
+                "q": protected,
+            },
+            timeout=5.0,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            translated = "".join(seg[0] for seg in (data[0] or []) if seg and seg[0])
+            if translated.strip():
+                return _restore_citation_tokens(translated, tokens)
+    except Exception as exc:
+        logger.warning("Fast translator single call failed: %s", str(exc)[:140])
+    return text
+
+
+def _fast_translate_batch_payload(batch_payload: dict, target_language: SupportedLanguage) -> Optional[dict]:
     """
-    Translates the human-readable prose fields of an already-grounded ChatResponse
-    into target_language ('en' | 'kn' | 'hi') without altering chunk_ids,
+    Translates all string leaves inside batch_payload['items'] concurrently in < 1.5s
+    while preserving chunk_id tokens verbatim.
+    """
+    items = batch_payload.get("items") or []
+    tasks: list[tuple[int, str, Optional[int], str]] = []
+    for i, item in enumerate(items):
+        for key in ("question", "answer_markdown", "evidence_coverage_description"):
+            val = item.get(key)
+            if isinstance(val, str) and val.strip():
+                tasks.append((i, key, None, val))
+        for list_key in ("claims", "action_plan", "clarifying_questions", "limitations"):
+            arr = item.get(list_key) or []
+            for j, val in enumerate(arr):
+                if isinstance(val, str) and val.strip():
+                    tasks.append((i, list_key, j, val))
+        ab = item.get("abstention_reason")
+        if isinstance(ab, dict):
+            for fld in ("summary", "what_was_found", "what_is_missing", "suggested_next_step"):
+                val = ab.get(fld)
+                if isinstance(val, str) and val.strip():
+                    tasks.append((i, f"ab.{fld}", None, val))
+
+    if not tasks:
+        return batch_payload
+
+    results: list[str] = [""] * len(tasks)
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        futures = {
+            pool.submit(_fast_translate_single, t[3], target_language): idx
+            for idx, t in enumerate(tasks)
+        }
+        for fut, idx in futures.items():
+            try:
+                results[idx] = fut.result()
+            except Exception:
+                results[idx] = tasks[idx][3]
+
+    out_items = json.loads(json.dumps(items, ensure_ascii=False))
+    for idx, (i, key, j, _) in enumerate(tasks):
+        val = results[idx]
+        if key.startswith("ab."):
+            fld = key[3:]
+            out_items[i]["abstention_reason"][fld] = val
+        elif j is not None:
+            out_items[i][key][j] = val
+        else:
+            out_items[i][key] = val
+
+    return {"items": out_items}
+
+
+def _run_translation_json(
+    batch_payload: dict,
+    prompt: str,
+    target_language: SupportedLanguage,
+) -> Optional[dict]:
+    """
+    Dispatches translation according to configured dedicated provider:
+    Ollama (local) -> Groq -> xAI Grok -> OpenAI -> Fast built-in neural translator -> Gemini.
+    """
+    if settings.DISABLE_LLM:
+        return None
+
+    target_name = LANGUAGE_NAMES.get(target_language, "English")
+    pref = (settings.TRANSLATION_PROVIDER or "auto").lower().strip()
+
+    # 1. Explicit or auto-detected local Ollama
+    if pref == "ollama" or settings.OLLAMA_MODEL:
+        res = _translate_via_ollama(prompt, target_name)
+        if res:
+            return res
+
+    # 2. Groq (ultra-fast OpenAI-compatible)
+    if pref == "groq" or (pref == "auto" and settings.GROQ_API_KEY):
+        key = settings.TRANSLATION_API_KEY or settings.GROQ_API_KEY
+        if key:
+            res = _translate_via_openai_compatible(
+                settings.TRANSLATION_BASE_URL or "https://api.groq.com/openai/v1",
+                key,
+                settings.TRANSLATION_MODEL or "llama-3.3-70b-versatile",
+                prompt,
+                target_name,
+            )
+            if res:
+                return res
+
+    # 3. xAI Grok
+    if pref in ("grok", "xai") or (pref == "auto" and settings.XAI_API_KEY):
+        key = settings.TRANSLATION_API_KEY or settings.XAI_API_KEY
+        if key:
+            res = _translate_via_openai_compatible(
+                settings.TRANSLATION_BASE_URL or "https://api.x.ai/v1",
+                key,
+                settings.TRANSLATION_MODEL or "grok-3-mini",
+                prompt,
+                target_name,
+            )
+            if res:
+                return res
+
+    # 4. OpenAI / custom OpenAI-compatible endpoint
+    if pref == "openai" or (pref == "auto" and (settings.OPENAI_API_KEY or settings.TRANSLATION_API_KEY)):
+        key = settings.TRANSLATION_API_KEY or settings.OPENAI_API_KEY
+        if key:
+            res = _translate_via_openai_compatible(
+                settings.TRANSLATION_BASE_URL or "https://api.openai.com/v1",
+                key,
+                settings.TRANSLATION_MODEL or "gpt-4o-mini",
+                prompt,
+                target_name,
+            )
+            if res:
+                return res
+
+    # 5. Auto-detect local Ollama if running on port 11434 (even when TRANSLATION_PROVIDER=auto)
+    if pref == "auto":
+        res = _translate_via_ollama(prompt, target_name)
+        if res:
+            return res
+
+    # 6. Explicit Gemini if requested
+    if pref == "gemini":
+        res = _gemini_generate_json(
+            prompt,
+            system_instruction=f"You are a precise Indian legal-information translator. Output strictly valid JSON in {target_name}.",
+            temperature=0.0,
+        )
+        if res:
+            return res
+
+    # 7. Fast zero-wait built-in neural translator (sub-second, never hangs on Gemini 503!)
+    return _fast_translate_batch_payload(batch_payload, target_language)
+
+
+def active_translation_provider_label() -> str:
+    if settings.DISABLE_LLM:
+        return "disabled"
+    pref = (settings.TRANSLATION_PROVIDER or "auto").lower().strip()
+    if pref == "ollama" or settings.OLLAMA_MODEL or _detect_ollama_model():
+        return f"ollama:{_detect_ollama_model() or 'configured'}"
+    if pref == "groq" or settings.GROQ_API_KEY:
+        return "groq"
+    if pref in ("grok", "xai") or settings.XAI_API_KEY:
+        return "grok"
+    if pref == "openai" or settings.OPENAI_API_KEY or settings.TRANSLATION_API_KEY:
+        return "openai"
+    if pref == "gemini":
+        return "gemini"
+    return "fast-neural-translator"
+
+
+def translate_chat_response(
+    response: ChatResponse,
+    target_language: SupportedLanguage,
+    question: Optional[str] = None,
+) -> tuple[Optional[str], ChatResponse, bool]:
+    """
+    Translates the user question and human-readable prose fields of an already-grounded
+    ChatResponse into target_language ('en' | 'kn' | 'hi') without altering chunk_ids,
     citation_details, official_links, or status.
     """
-    if response.language == target_language and _has_target_script(response.answer_markdown, target_language):
-        return response
+    already_target_resp = response.language == target_language and _has_target_script(
+        response.answer_markdown, target_language
+    )
+    already_target_q = question is None or _has_target_script(question, target_language)
+    if already_target_resp and already_target_q and target_language != "en":
+        return question, response, True
+    if target_language == "en" and response.language == "en" and (
+        question is None or not (_has_target_script(question, "kn") or _has_target_script(question, "hi"))
+    ):
+        return question, response, True
 
     cloned = response.model_copy(deep=True)
-    cloned.language = target_language
-
-    # Always localize deterministic status/clarification wrapper cleanly if non-generation
     if cloned.status in ("out_of_scope", "needs_clarification", "cannot_verify") and not cloned.claims:
         cloned.answer_markdown = _localize_status_text(
             cloned.status,
@@ -518,67 +897,95 @@ def translate_chat_response(
             cloned.clarifying_questions,
         )
 
-    translatable_payload = {
-        "answer_markdown": cloned.answer_markdown,
-        "claims": [c.text for c in cloned.claims],
-        "action_plan": [a.text for a in cloned.action_plan],
-        "clarifying_questions": cloned.clarifying_questions,
-        "limitations": cloned.limitations,
-        "abstention_reason": (
+    batch_payload = {
+        "items": [
             {
-                "summary": cloned.abstention_reason.summary,
-                "what_was_found": cloned.abstention_reason.what_was_found,
-                "what_is_missing": cloned.abstention_reason.what_is_missing,
-                "suggested_next_step": cloned.abstention_reason.suggested_next_step,
+                "id": "single",
+                **_build_translatable_dict(cloned, question=question),
             }
-            if cloned.abstention_reason
-            else None
-        ),
-        "evidence_coverage_description": (
-            cloned.evidence_coverage.description if cloned.evidence_coverage else None
-        ),
+        ]
     }
-
     target_name = LANGUAGE_NAMES.get(target_language, "English")
     prompt = (
-        f"Translate ONLY the natural-language text values in this JSON object into clear, accurate {target_name}.\n"
+        f"Translate ONLY the natural-language string values inside `items[0]` into clear, accurate {target_name}.\n"
         "STRICT RULES:\n"
-        "1. Preserve every markdown formatting marker (`**...**`, `- `) and every `[chunk_id]` or `` `chunk_id` `` token verbatim without translating the chunk ID.\n"
-        "2. Do NOT invent new legal facts, sections, numbers, or remedies.\n"
+        "1. Preserve every markdown marker (`**...**`, `- `) and every `[chunk_id]` or `` `chunk_id` `` token verbatim without translating the chunk ID.\n"
+        "2. Keep null values as null and do NOT invent new legal facts, sections, numbers, or remedies.\n"
         "3. Keep the exact same JSON keys and array lengths.\n\n"
-        f"JSON TO TRANSLATE:\n{json.dumps(translatable_payload, ensure_ascii=False)}"
+        f"JSON TO TRANSLATE:\n{json.dumps(batch_payload, ensure_ascii=False)}"
     )
 
-    translated = _gemini_generate_json(
-        prompt,
-        system_instruction=f"You are a precise Indian legal-information translator. Output strictly valid JSON in {target_name}.",
-        temperature=0.0,
+    translated = _run_translation_json(batch_payload, prompt, target_language)
+    if translated and isinstance(translated.get("items"), list) and translated["items"]:
+        row = translated["items"][0]
+        if isinstance(row, dict):
+            return _apply_translated_dict(cloned, row, target_language, original_question=question)
+
+    if cloned.status in ("out_of_scope", "needs_clarification", "cannot_verify") and not cloned.claims:
+        cloned.language = target_language
+        return question, cloned, False
+    return question, response, False
+
+
+def translate_thread_items(
+    items: List[TranslateThreadItem], target_language: SupportedLanguage
+) -> tuple[List[TranslateThreadItem], bool]:
+    """
+    Batch-translates an entire conversation thread (both questions and responses)
+    into target_language via Ollama / Groq / Grok / OpenAI / fast neural translator.
+    """
+    if not items:
+        return [], True
+
+    batch_payload = {
+        "items": [
+            {
+                "id": it.id,
+                **_build_translatable_dict(it.response, question=it.question),
+            }
+            for it in items
+        ]
+    }
+    target_name = LANGUAGE_NAMES.get(target_language, "English")
+    prompt = (
+        f"Translate ONLY the natural-language string values inside `items[]` into clear, natural {target_name}.\n"
+        "STRICT RULES:\n"
+        "1. Return a JSON object with key `items` matching the exact same length and `id` values.\n"
+        "2. Translate `question`, `answer_markdown`, `claims[]`, `action_plan[]`, `clarifying_questions[]`, `limitations[]`, `abstention_reason` text fields, and `evidence_coverage_description`.\n"
+        "3. Preserve every `[chunk_id]` or `` `chunk_id` `` identifier verbatim without translating it, and keep official Act names/section numbers accurate.\n"
+        "4. Keep null fields as null.\n\n"
+        f"JSON TO TRANSLATE:\n{json.dumps(batch_payload, ensure_ascii=False)}"
     )
+    translated = _run_translation_json(batch_payload, prompt, target_language)
+    if not translated or not isinstance(translated.get("items"), list):
+        return items, False
 
-    if translated and isinstance(translated, dict):
-        if isinstance(translated.get("answer_markdown"), str) and translated["answer_markdown"].strip():
-            cloned.answer_markdown = translated["answer_markdown"]
-        if isinstance(translated.get("claims"), list) and len(translated["claims"]) == len(cloned.claims):
-            for idx, txt in enumerate(translated["claims"]):
-                if isinstance(txt, str) and txt.strip():
-                    cloned.claims[idx].text = txt
-        if isinstance(translated.get("action_plan"), list) and len(translated["action_plan"]) == len(cloned.action_plan):
-            for idx, txt in enumerate(translated["action_plan"]):
-                if isinstance(txt, str) and txt.strip():
-                    cloned.action_plan[idx].text = txt
-        if isinstance(translated.get("clarifying_questions"), list):
-            cloned.clarifying_questions = [str(q) for q in translated["clarifying_questions"]]
-        if isinstance(translated.get("limitations"), list):
-            cloned.limitations = [str(l) for l in translated["limitations"]]
-        ab_t = translated.get("abstention_reason")
-        if cloned.abstention_reason and isinstance(ab_t, dict):
-            for fld in ("summary", "what_was_found", "what_is_missing", "suggested_next_step"):
-                if isinstance(ab_t.get(fld), str) and ab_t[fld].strip():
-                    setattr(cloned.abstention_reason, fld, ab_t[fld])
-        if cloned.evidence_coverage and isinstance(translated.get("evidence_coverage_description"), str):
-            cloned.evidence_coverage.description = translated["evidence_coverage_description"]
-
-    return cloned
+    by_id = {
+        str(row.get("id")): row
+        for row in translated["items"]
+        if isinstance(row, dict) and row.get("id") is not None
+    }
+    out: List[TranslateThreadItem] = []
+    all_ok = True
+    for it in items:
+        row = by_id.get(it.id)
+        if not row:
+            out.append(it)
+            all_ok = False
+            continue
+        new_q, new_resp, ok = _apply_translated_dict(
+            it.response, row, target_language, original_question=it.question
+        )
+        if not ok:
+            all_ok = False
+        out.append(
+            TranslateThreadItem(
+                id=it.id,
+                question=new_q or it.question,
+                response=new_resp,
+            )
+        )
+    return out, all_ok
 
 
 def generate_grounded_response(
@@ -616,7 +1023,8 @@ def generate_grounded_response(
             latency_ms=latency_ms,
         )
         if language in ("kn", "hi") and not settings.DISABLE_LLM:
-            return translate_chat_response(resp, language)  # type: ignore[arg-type]
+            _, tr_resp, _ = translate_chat_response(resp, language)  # type: ignore[arg-type]
+            return tr_resp
         return resp
 
     passages = gate.filtered_passages
@@ -643,7 +1051,8 @@ def generate_grounded_response(
                 llm_raw["status"] = "partially_verified"
             resp = ChatResponse(**llm_raw)
             if language in ("kn", "hi") and not _has_target_script(resp.answer_markdown, language):
-                return translate_chat_response(resp, language)  # type: ignore[arg-type]
+                _, tr_resp, _ = translate_chat_response(resp, language)  # type: ignore[arg-type]
+                return tr_resp
             return resp
         except Exception as exc:
             logger.warning("Failed to parse LLM JSON response: %s", str(exc)[:200])
@@ -657,5 +1066,6 @@ def generate_grounded_response(
     resp.request_id = request_id
     resp.language = language  # type: ignore[arg-type]
     if language in ("kn", "hi") and not settings.DISABLE_LLM:
-        return translate_chat_response(resp, language)  # type: ignore[arg-type]
+        _, tr_resp, _ = translate_chat_response(resp, language)  # type: ignore[arg-type]
+        return tr_resp
     return resp

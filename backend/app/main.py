@@ -20,13 +20,28 @@ from app.models.schemas import (
     ChunkRecord,
     CoverageResponse,
     FeedbackRequest,
+    PolicyLawMatch,
+    PolicyProvisionMatch,
+    PolicySearchResponse,
     SourceManifestRecord,
+    SupportedLanguage,
     TranslateResponseRequest,
+    TranslateResponseResult,
+    TranslateThreadRequest,
+    TranslateThreadResponse,
 )
-from app.services.answer import generate_grounded_response, translate_chat_response
+from app.services.answer import (
+    active_translation_provider_label,
+    generate_grounded_response,
+    translate_chat_response,
+    translate_thread_items,
+)
 from app.services.citation_validator import validate_and_hydrate_response
 from app.services.evidence_gate import evaluate_evidence
-from app.services.issue_classifier import classify_query
+from app.services.issue_classifier import (
+    classify_query,
+    translate_or_normalize_for_search,
+)
 from app.services.retrieval import HybridRetriever
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -59,6 +74,7 @@ def health() -> dict:
         "approved_chunks": len(retriever.approved_chunks),
         "total_chunks": len(retriever.chunks),
         "llm_configured": bool(settings.LLM_API_KEY),
+        "translation_provider": active_translation_provider_label(),
     }
 
 
@@ -188,9 +204,94 @@ def chat(req: ChatRequest) -> ChatResponse:
     return final_resp
 
 
-@app.post("/api/translate-response", response_model=ChatResponse)
-def translate_response_endpoint(req: TranslateResponseRequest) -> ChatResponse:
-    return translate_chat_response(req.response, req.target_language)
+@app.post("/api/translate-response", response_model=TranslateResponseResult)
+def translate_response_endpoint(req: TranslateResponseRequest) -> TranslateResponseResult:
+    new_q, new_resp, ok = translate_chat_response(
+        req.response, req.target_language, question=req.question
+    )
+    return TranslateResponseResult(question=new_q, response=new_resp, translated=ok)
+
+
+@app.post("/api/translate-thread", response_model=TranslateThreadResponse)
+def translate_thread_endpoint(req: TranslateThreadRequest) -> TranslateThreadResponse:
+    items, ok = translate_thread_items(req.items, req.target_language)
+    return TranslateThreadResponse(
+        target_language=req.target_language,
+        items=items,
+        translated=ok,
+    )
+
+
+@app.get("/api/policies/search", response_model=PolicySearchResponse)
+def search_policies(q: str = "", language: SupportedLanguage = "en") -> PolicySearchResponse:
+    clean_q = q.strip()
+    if clean_q:
+        clf = classify_query(clean_q)
+        if clf.is_out_of_scope:
+            oos_msgs = {
+                "en": f"'{clean_q}' appears outside Indian Consumer Rights & Protection ({clf.out_of_scope_reason or 'unrelated domain'}). Satya lists laws and policies only for Indian consumer protection.",
+                "kn": f"'{clean_q}' ಭಾರತೀಯ ಗ್ರಾಹಕ ಹಕ್ಕುಗಳು ಮತ್ತು ರಕ್ಷಣೆಯ ವ್ಯಾಪ್ತಿಯ ಹೊರಗಿದೆ. ಸತ್ಯ ಕೇವಲ ಗ್ರಾಹಕ ರಕ್ಷಣೆಗೆ ಸಂಬಂಧಿಸಿದ ಕಾಯ್ದೆಗಳು ಮತ್ತು ನೀತಿಗಳನ್ನು ತೋರಿಸುತ್ತದೆ.",
+                "hi": f"'{clean_q}' भारतीय उपभोक्ता अधिकार और संरक्षण के दायरे से बाहर प्रतीत होता है। सत्य केवल भारतीय उपभोक्ता संरक्षण से जुड़े कानून और नीतियां दिखाता है।",
+            }
+            return PolicySearchResponse(
+                query=clean_q,
+                language=language,
+                in_scope=False,
+                out_of_scope_message=oos_msgs.get(language, oos_msgs["en"]),
+                total_laws_matched=0,
+                laws=[],
+            )
+        search_q = clf.normalized_query or translate_or_normalize_for_search(clean_q)
+    else:
+        search_q = ""
+
+    matched = retriever.search_policies_by_topic(search_q, top_provisions_per_law=4)
+    laws: List[PolicyLawMatch] = []
+    for src, chunks_list, _ in matched:
+        provisions: List[PolicyProvisionMatch] = []
+        for ch in chunks_list:
+            flat = " ".join(ch.text.split())
+            snippet = flat[:260].rsplit(" ", 1)[0] + "..." if len(flat) > 260 else flat
+            provisions.append(
+                PolicyProvisionMatch(
+                    chunk_id=ch.chunk_id,
+                    section=ch.section,
+                    subsection=ch.subsection,
+                    rule=ch.rule,
+                    paragraph=ch.paragraph,
+                    heading=ch.heading,
+                    page_start=ch.page_start,
+                    page_end=ch.page_end,
+                    snippet=snippet,
+                    exact_passage=ch.text,
+                )
+            )
+        laws.append(
+            PolicyLawMatch(
+                source_id=src.source_id,
+                title=src.title,
+                issuing_authority=src.issuing_authority,
+                authority_type=src.authority_type,
+                document_type=src.document_type,
+                status=src.status,
+                publication_date=src.publication_date,
+                effective_from=src.effective_from,
+                retrieved_at=src.retrieved_at,
+                version_label=src.version_label,
+                official_url=src.official_url,
+                notes=src.notes,
+                topic_tags=src.topic_tags,
+                matching_provisions=provisions,
+            )
+        )
+
+    return PolicySearchResponse(
+        query=clean_q,
+        language=language,
+        in_scope=True,
+        total_laws_matched=len(laws),
+        laws=laws,
+    )
 
 
 @app.post("/api/feedback")

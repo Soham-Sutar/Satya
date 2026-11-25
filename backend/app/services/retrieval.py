@@ -266,3 +266,104 @@ class HybridRetriever:
                 relevant_pending.append(p_src)
 
         return passages, relevant_pending
+
+    def search_policies_by_topic(
+        self,
+        query: str,
+        top_provisions_per_law: int = 4,
+    ) -> List[Tuple[SourceManifestRecord, List[ChunkRecord], float]]:
+        """
+        Searches all indexed Indian consumer-protection laws, rules, regulations,
+        guidelines, and official policies relevant to a consumer-rights topic.
+        Groups matching sections/rules/clauses under each parent official Act/Policy.
+        """
+        authority_rank = {
+            "central_legislation": 0,
+            "central_rules": 1,
+            "central_regulations": 2,
+            "ccpa_guidelines": 3,
+            "gazette_notification": 4,
+            "official_portal_guidance": 5,
+        }
+
+        clean_q = query.strip()
+        if not clean_q:
+            # Return full catalog grouped by authority hierarchy with representative provisions
+            results: List[Tuple[SourceManifestRecord, List[ChunkRecord], float]] = []
+            for src in sorted(
+                self.manifest.values(),
+                key=lambda s: (0 if s.status == "approved" else 1, authority_rank.get(s.authority_type, 9), s.title),
+            ):
+                src_chunks = [c for c in self.chunks.values() if c.source_id == src.source_id][:top_provisions_per_law]
+                results.append((src, src_chunks, 1.0))
+            return results
+
+        q_tokens = _tokenize(clean_q)
+        low = clean_q.lower()
+
+        # Score chunks using BM25 + semantic vector + exact title/tag match
+        bm25_scores = self.bm25.get_scores(q_tokens) if self.bm25 else [0.0] * len(self.approved_chunks)
+        chunk_score: Dict[str, float] = {}
+        for idx, c in enumerate(self.approved_chunks):
+            sc = float(bm25_scores[idx])
+            if sc > 0:
+                chunk_score[c.chunk_id] = sc
+
+        if self.chroma_collection is not None and self.vectorizer is not None and self.svd is not None:
+            try:
+                q_tfidf = self.vectorizer.transform([clean_q])
+                q_emb = normalize(self.svd.transform(q_tfidf)).tolist()
+                res = self.chroma_collection.query(
+                    query_embeddings=q_emb,
+                    n_results=min(35, len(self.approved_chunks)),
+                    where={"domain": {"$eq": settings.DOMAIN}},
+                )
+                for rank, cid in enumerate(res.get("ids", [[]])[0], 1):
+                    chunk_score[cid] = chunk_score.get(cid, 0.0) + (2.5 / (10 + rank))
+            except Exception:
+                pass
+
+        # Group matching chunks by source_id
+        grouped_chunks: Dict[str, List[Tuple[float, ChunkRecord]]] = {}
+        for cid, sc in chunk_score.items():
+            c = self.chunks.get(cid)
+            if not c:
+                continue
+            # Also require some meaningful overlap or high vector rank
+            text_low = f"{c.heading or ''} {c.text}".lower()
+            token_hits = sum(1 for t in q_tokens if len(t) > 2 and t in text_low)
+            if token_hits == 0 and sc < 0.20:
+                continue
+            grouped_chunks.setdefault(c.source_id, []).append((sc + token_hits * 0.6, c))
+
+        # Also check manifest metadata (title, topic_tags, notes) for all sources (including pending_review!)
+        law_results: List[Tuple[SourceManifestRecord, List[ChunkRecord], float]] = []
+        for src in self.manifest.values():
+            meta_blob = f"{src.title} {' '.join(src.topic_tags)} {src.notes or ''} {src.issuing_authority}".lower()
+            meta_hits = sum(1 for t in q_tokens if len(t) > 2 and t in meta_blob)
+            if any(t.replace("_", " ") in low or low in t.replace("_", " ") for t in src.topic_tags):
+                meta_hits += 3
+
+            matched_c = sorted(grouped_chunks.get(src.source_id, []), key=lambda x: x[0], reverse=True)
+            if not matched_c and meta_hits == 0:
+                continue
+
+            if not matched_c and meta_hits > 0:
+                # Include representative chunks from that Act/Policy when matched via title/topic tags
+                fallback_chunks = [c for c in self.chunks.values() if c.source_id == src.source_id][:top_provisions_per_law]
+                top_chunks = fallback_chunks
+                total_score = float(meta_hits)
+            else:
+                top_chunks = [c for _, c in matched_c[:top_provisions_per_law]]
+                total_score = matched_c[0][0] + meta_hits * 1.5
+
+            law_results.append((src, top_chunks, round(total_score, 3)))
+
+        law_results.sort(
+            key=lambda item: (
+                0 if item[0].status == "approved" else 1,
+                -item[2],
+                authority_rank.get(item[0].authority_type, 9),
+            )
+        )
+        return law_results

@@ -70,7 +70,70 @@ class ChatRequest(BaseModel):
 
 class TranslateResponseRequest(BaseModel):
     response: "ChatResponse"
+    question: Optional[str] = None
     target_language: SupportedLanguage
+
+
+class TranslateResponseResult(BaseModel):
+    question: Optional[str] = None
+    response: "ChatResponse"
+    translated: bool = True
+
+
+class TranslateThreadItem(BaseModel):
+    id: str
+    question: str
+    response: "ChatResponse"
+
+
+class TranslateThreadRequest(BaseModel):
+    items: List[TranslateThreadItem]
+    target_language: SupportedLanguage
+
+
+class TranslateThreadResponse(BaseModel):
+    target_language: SupportedLanguage
+    items: List[TranslateThreadItem]
+    translated: bool = True
+
+
+class PolicyProvisionMatch(BaseModel):
+    chunk_id: str
+    section: Optional[str] = None
+    subsection: Optional[str] = None
+    rule: Optional[str] = None
+    paragraph: Optional[str] = None
+    heading: Optional[str] = None
+    page_start: Optional[int] = None
+    page_end: Optional[int] = None
+    snippet: str
+    exact_passage: str
+
+
+class PolicyLawMatch(BaseModel):
+    source_id: str
+    title: str
+    issuing_authority: str
+    authority_type: str
+    document_type: str
+    status: SourceStatus
+    publication_date: Optional[str] = None
+    effective_from: Optional[str] = None
+    retrieved_at: str
+    version_label: str
+    official_url: str
+    notes: Optional[str] = None
+    topic_tags: List[str] = Field(default_factory=list)
+    matching_provisions: List[PolicyProvisionMatch] = Field(default_factory=list)
+
+
+class PolicySearchResponse(BaseModel):
+    query: str
+    language: SupportedLanguage = "en"
+    in_scope: bool = True
+    out_of_scope_message: Optional[str] = None
+    total_laws_matched: int = 0
+    laws: List[PolicyLawMatch] = Field(default_factory=list)
 
 
 class SourceManifestRecord(BaseModel):

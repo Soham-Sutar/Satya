@@ -31,7 +31,9 @@ export interface ConversationEntry {
   id: string;
   question: string;
   response: ChatResponse;
-  translations?: Partial<Record<SupportedLanguage, ChatResponse>>;
+  translations?: Partial<
+    Record<SupportedLanguage, { question: string; response: ChatResponse }>
+  >;
 }
 
 interface ChatPanelProps {

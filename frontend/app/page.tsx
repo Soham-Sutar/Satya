@@ -12,6 +12,8 @@ import {
   History,
   Globe,
   Plus,
+  BookMarked,
+  MessageSquare,
 } from "lucide-react";
 import {
   ChatTurn,
@@ -22,16 +24,23 @@ import {
   SupportedLanguage,
 } from "@/lib/types";
 import { LANGUAGE_OPTIONS, UI_COPY } from "@/lib/i18n";
-import { fetchCoverage, fetchSources, sendChatMessage, translateResponse } from "@/lib/api";
+import { fetchCoverage, fetchSources, sendChatMessage, translateThread } from "@/lib/api";
 import { ChatPanel, ConversationEntry } from "@/components/ChatPanel";
 import { EvidenceLedger } from "@/components/EvidenceLedger";
 import { ActionPlanner } from "@/components/ActionPlanner";
 import { SourceViewer } from "@/components/SourceViewer";
 import { SourceCoverageModal } from "@/components/SourceCoverageModal";
 import { ChatThread, HistorySidebar } from "@/components/HistorySidebar";
+import { PolicyExplorer } from "@/components/PolicyExplorer";
 
 const THREADS_STORAGE_KEY = "satya_chat_threads_v1";
 const LANGUAGE_STORAGE_KEY = "satya_language_v1";
+
+function hasTargetScriptClient(text: string, lang: SupportedLanguage): boolean {
+  if (lang === "kn") return /[\u0C80-\u0CFF]/.test(text);
+  if (lang === "hi") return /[\u0900-\u097F]/.test(text);
+  return true;
+}
 
 export default function SatyaHomePage() {
   const [language, setLanguage] = useState<SupportedLanguage>("en");
@@ -39,6 +48,7 @@ export default function SatyaHomePage() {
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [draftSessionContext, setDraftSessionContext] = useState<SessionContext>({});
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
+  const [workspaceMode, setWorkspaceMode] = useState<"chat" | "policies">("chat");
   const [activeTab, setActiveTab] = useState<"ledger" | "planner">("ledger");
   const [loading, setLoading] = useState(false);
   const [translating, setTranslating] = useState(false);
@@ -125,68 +135,133 @@ export default function SatyaHomePage() {
     targetLang: SupportedLanguage
   ) => {
     if (!threadEntries.length) return;
-    const needsWork = threadEntries.some(
-      (e) =>
-        (e.response.language || "en") !== targetLang &&
-        !e.translations?.[targetLang]
-    );
 
-    // Apply any already-cached translations immediately
+    // 1. Apply any valid cached translation immediately (only if BOTH question and response match target script)
     const withCached = threadEntries.map((e) => {
       const cached = e.translations?.[targetLang];
-      if (cached) {
-        return { ...e, response: cached };
+      const qMatches =
+        targetLang === "en"
+          ? !!cached &&
+            !hasTargetScriptClient(cached.question, "kn") &&
+            !hasTargetScriptClient(cached.question, "hi")
+          : !!cached && hasTargetScriptClient(cached.question, targetLang);
+      if (
+        cached &&
+        qMatches &&
+        hasTargetScriptClient(cached.response.answer_markdown, targetLang)
+      ) {
+        return {
+          ...e,
+          question: cached.question,
+          response: cached.response,
+        };
       }
       return e;
     });
 
+    // Determine which entries still need server batch translation
+    const toTranslate = withCached.filter((e) => {
+      const respLang = (e.response.language || "en") as SupportedLanguage;
+      const respMatches =
+        respLang === targetLang &&
+        hasTargetScriptClient(e.response.answer_markdown, targetLang);
+      const qMatches =
+        targetLang === "en"
+          ? !hasTargetScriptClient(e.question, "kn") &&
+            !hasTargetScriptClient(e.question, "hi")
+          : hasTargetScriptClient(e.question, targetLang);
+      return !(respMatches && qMatches);
+    });
+
     setThreads((prev) =>
       prev.map((th) =>
-        th.id === threadId ? { ...th, language: targetLang, entries: withCached } : th
+        th.id === threadId
+          ? {
+              ...th,
+              language: targetLang,
+              title: withCached[0]?.question
+                ? withCached[0].question.length > 56
+                  ? `${withCached[0].question.slice(0, 56).trim()}…`
+                  : withCached[0].question
+                : th.title,
+              entries: withCached,
+            }
+          : th
       )
     );
 
-    if (!needsWork) return;
+    if (toTranslate.length === 0) return;
 
     setTranslating(true);
+    setError(null);
     try {
-      const translatedEntries = await Promise.all(
-        withCached.map(async (entry) => {
-          const baseLang = (entry.response.language || "en") as SupportedLanguage;
-          const existingTranslations: Partial<Record<SupportedLanguage, typeof entry.response>> = {
-            ...(entry.translations || {}),
-            [baseLang]: entry.response,
-          };
-          if (existingTranslations[targetLang]) {
-            return {
-              ...entry,
-              response: existingTranslations[targetLang]!,
-              translations: existingTranslations,
-            };
-          }
-          try {
-            const translated = await translateResponse(entry.response, targetLang);
-            return {
-              ...entry,
-              response: translated,
-              translations: {
-                ...existingTranslations,
-                [targetLang]: translated,
-              },
-            };
-          } catch {
-            return entry;
-          }
-        })
+      const batchRes = await translateThread(
+        toTranslate.map((e) => ({
+          id: e.id,
+          question: e.question,
+          response: e.response,
+        })),
+        targetLang
       );
+
+      const translatedMap = new Map(batchRes.items.map((it) => [it.id, it]));
+      const updatedEntries = withCached.map((entry) => {
+        const item = translatedMap.get(entry.id);
+        if (!item) return entry;
+
+        const baseLang = (entry.response.language || "en") as SupportedLanguage;
+        const nextCache = {
+          ...(entry.translations || {}),
+          [baseLang]: { question: entry.question, response: entry.response },
+        };
+
+        const validResult =
+          batchRes.translated &&
+          hasTargetScriptClient(item.response.answer_markdown, targetLang);
+
+        if (validResult) {
+          nextCache[targetLang] = {
+            question: item.question,
+            response: item.response,
+          };
+          return {
+            ...entry,
+            question: item.question,
+            response: item.response,
+            translations: nextCache,
+          };
+        }
+        return entry;
+      });
 
       setThreads((prev) =>
         prev.map((th) =>
           th.id === threadId
-            ? { ...th, language: targetLang, entries: translatedEntries }
+            ? {
+                ...th,
+                language: targetLang,
+                title: updatedEntries[0]?.question
+                  ? updatedEntries[0].question.length > 56
+                    ? `${updatedEntries[0].question.slice(0, 56).trim()}…`
+                    : updatedEntries[0].question
+                  : th.title,
+                entries: updatedEntries,
+              }
             : th
         )
       );
+
+      if (!batchRes.translated) {
+        setError(
+          targetLang === "kn"
+            ? "ಅನುವಾದ ಸೇವೆಯು ತಾತ್ಕಾಲಿಕವಾಗಿ ಕಾರ್ಯನಿರತವಾಗಿದೆ. ದಯವಿಟ್ಟು ಕೆಲವು ಸೆಕೆಂಡುಗಳ ನಂತರ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ."
+            : targetLang === "hi"
+            ? "अनुवाद सेवा अस्थायी रूप से व्यस्त है। कृपया कुछ सेकंड बाद पुनः प्रयास करें।"
+            : "Translation service is temporarily busy. Please try again in a few seconds."
+        );
+      }
+    } catch {
+      setError("Could not refresh conversation language. Please retry.");
     } finally {
       setTranslating(false);
     }
@@ -239,7 +314,9 @@ export default function SatyaHomePage() {
         id: entryId,
         question: message,
         response,
-        translations: { [language]: response },
+        translations: hasTargetScriptClient(response.answer_markdown, language)
+          ? { [language]: { question: message, response } }
+          : undefined,
       };
       const nowIso = new Date().toISOString();
 
@@ -339,6 +416,34 @@ export default function SatyaHomePage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {/* Workspace Mode Switcher: Ask Satya vs Consumer Laws & Policies Explorer */}
+            <div className="inline-flex items-center rounded-lg border border-border-subtle bg-canvas p-0.5">
+              <button
+                type="button"
+                onClick={() => setWorkspaceMode("chat")}
+                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-semibold transition-colors ${
+                  workspaceMode === "chat"
+                    ? "bg-navy text-white shadow-sm"
+                    : "text-ink-muted hover:text-ink"
+                }`}
+              >
+                <MessageSquare className="h-3.5 w-3.5" />
+                <span>{t.navAskSatya}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setWorkspaceMode("policies")}
+                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-semibold transition-colors ${
+                  workspaceMode === "policies"
+                    ? "bg-navy text-white shadow-sm"
+                    : "text-ink-muted hover:text-ink"
+                }`}
+              >
+                <BookMarked className="h-3.5 w-3.5" />
+                <span>{t.navLawsPolicies}</span>
+              </button>
+            </div>
+
             {/* Multi-lingual Switcher: English / Kannada / Hindi */}
             <div
               className="inline-flex items-center rounded-lg border border-border-subtle bg-canvas p-0.5"
@@ -417,8 +522,14 @@ export default function SatyaHomePage() {
         </div>
       </header>
 
-      {/* Main Three-Pane Legal-Tech Workspace: History | Continuous Chat | Evidence & Action Plan */}
+      {/* Main Legal-Tech Workspace: Chat Mode OR Laws & Policies Explorer */}
       <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 py-5 sm:px-6">
+        {workspaceMode === "policies" ? (
+          <PolicyExplorer
+            language={language}
+            onOpenPassage={(cit) => setViewerCitation(cit)}
+          />
+        ) : (
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-12 items-start">
           {/* Left Column: Persistent Chat History Section */}
           <HistorySidebar
@@ -532,6 +643,7 @@ export default function SatyaHomePage() {
             </div>
           </aside>
         </div>
+        )}
       </main>
 
       {/* Footer Disclaimer */}

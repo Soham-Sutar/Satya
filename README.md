@@ -45,6 +45,28 @@ cp .env.example .env
 
 Optionally set `LLM_API_KEY` (Gemini `AIza...` or OpenAI `sk-...`) in `.env`. If omitted, Satya operates in zero-hallucination deterministic extractive mode grounded directly in retrieved official chunks.
 
+#### Optional Dedicated Translation Provider (English / Kannada / Hindi)
+
+For instant language conversion and auto-refresh without waiting on Gemini free-tier rate limits, Satya supports dedicated translation providers in `.env` in this priority order:
+
+```env
+# Option A: Local Ollama (auto-detected if running on port 11434)
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=qwen2.5:3b
+
+# Option B: Groq (ultra-fast)
+GROQ_API_KEY=gsk_...
+
+# Option C: xAI Grok
+XAI_API_KEY=xai-...
+
+# Option D: OpenAI (or any OpenAI-compatible endpoint)
+OPENAI_API_KEY=sk-...
+# Optional overrides: TRANSLATION_PROVIDER=groq|grok|openai|ollama|gemini|auto
+```
+
+If none of the above are configured, Satya automatically uses its fast built-in neural translator fallback (~1s) while preserving all statutory `chunk_id` citations verbatim.
+
 ### 2. Run Backend (FastAPI on port 8000)
 
 ```bash

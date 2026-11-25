@@ -33,6 +33,16 @@ class Settings:
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "local-hybrid")
     DISABLE_LLM: bool = os.getenv("SATYA_DISABLE_LLM", "0") == "1"
 
+    # Dedicated translation provider configuration (auto | ollama | groq | grok | openai | gemini | fast)
+    TRANSLATION_PROVIDER: str = os.getenv("TRANSLATION_PROVIDER", "auto")
+    TRANSLATION_API_KEY: str = os.getenv("TRANSLATION_API_KEY", "")
+    TRANSLATION_MODEL: str = os.getenv("TRANSLATION_MODEL", "")
+    TRANSLATION_BASE_URL: str = os.getenv("TRANSLATION_BASE_URL", "")
+    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
+    XAI_API_KEY: str = os.getenv("XAI_API_KEY") or os.getenv("GROK_API_KEY", "")
+    OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "")
+
     # Paths
     DATA_DIR: Path = REPO_ROOT / "data"
     SOURCES_DIR: Path = DATA_DIR / "sources"

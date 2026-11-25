@@ -209,11 +209,44 @@ def test_translate_response_preserves_citations():
 
     tr_res = client.post(
         "/api/translate-response",
-        json={"response": en_res, "target_language": "kn"},
+        json={"response": en_res, "question": "Show me the exact section that defines deficiency in service.", "target_language": "kn"},
     )
     assert tr_res.status_code == 200
     body = tr_res.json()
-    assert body["language"] == "kn"
-    assert set(body["citation_details"].keys()) == en_cites
-    assert body["status"] == en_res["status"]
+    assert set(body["response"]["citation_details"].keys()) == en_cites
+    assert body["response"]["status"] == en_res["status"]
+
+    batch_res = client.post(
+        "/api/translate-thread",
+        json={
+            "items": [
+                {
+                    "id": "t1",
+                    "question": "Show me the exact section that defines deficiency in service.",
+                    "response": en_res,
+                }
+            ],
+            "target_language": "hi",
+        },
+    )
+    assert batch_res.status_code == 200
+    batch_body = batch_res.json()
+    assert len(batch_body["items"]) == 1
+    assert set(batch_body["items"][0]["response"]["citation_details"].keys()) == en_cites
+
+
+def test_policy_topic_search():
+    res = client.get("/api/policies/search", params={"q": "ecommerce grievance officer"})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["in_scope"] is True
+    assert body["total_laws_matched"] >= 2
+    source_ids = {law["source_id"] for law in body["laws"]}
+    assert "ecommerce_rules_2020" in source_ids
+
+    oos = client.get("/api/policies/search", params={"q": "Indian passport renewal"})
+    assert oos.status_code == 200
+    oos_body = oos.json()
+    assert oos_body["in_scope"] is False
+    assert oos_body["total_laws_matched"] == 0
 
