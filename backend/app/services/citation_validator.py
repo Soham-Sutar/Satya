@@ -45,6 +45,26 @@ def build_citation_metadata(p: RetrievedPassage) -> CitationMetadata:
     )
 
 
+def _format_coverage_desc(supported: int, total: int, sources: int, language: str) -> str:
+    if language == "kn":
+        return (
+            f"ಸಾಕ್ಷ್ಯ ವ್ಯಾಪ್ತಿ: {total} ಪ್ರಮುಖ ಹಕ್ಕುಗಳಲ್ಲಿ {supported} ಹಕ್ಕುಗಳು "
+            f"{sources} ಅನುಮೋದಿತ ಭಾರತೀಯ ಗ್ರಾಹಕ-ರಕ್ಷಣಾ ಮೂಲ(ಗಳ) ಮೂಲಕ ನೇರವಾಗಿ ಬೆಂಬಲಿತವಾಗಿವೆ. "
+            "ಇದು ಮೂಲ ಪತ್ತೆಹಚ್ಚುವಿಕೆಯನ್ನು ಅಳೆಯುತ್ತದೆಯೇ ಹೊರತು ಕಾನೂನು ಫಲಿತಾಂಶದ ಭವಿಷ್ಯವಲ್ಲ."
+        )
+    if language == "hi":
+        return (
+            f"साक्ष्य कवरेज: {total} मुख्य दावों में से {supported} दावे "
+            f"{sources} अनुमोदित भारतीय उपभोक्ता-संरक्षण स्रोत(तों) द्वारा सीधे समर्थित हैं। "
+            "यह स्रोत प्रमाणिकता को मापता है, कानूनी परिणाम की भविष्यवाणी नहीं करता।"
+        )
+    return (
+        f"Evidence coverage: {supported} of {total} material claims are directly supported "
+        f"across {sources} approved official Indian consumer-protection source(s). "
+        "This measures source traceability, not a legal outcome prediction."
+    )
+
+
 def validate_and_hydrate_response(
     raw_response: ChatResponse,
     passages: List[RetrievedPassage],
@@ -170,10 +190,8 @@ def validate_and_hydrate_response(
         total_claims=total_claims,
         retrieved_chunks_count=len(passages),
         approved_sources_used=approved_sources_used,
-        description=(
-            f"Evidence coverage: {supported_count} of {total_claims} material claims are directly supported "
-            f"across {approved_sources_used} approved official Indian consumer-protection source(s). "
-            "This measures source traceability, not a legal outcome prediction."
+        description=_format_coverage_desc(
+            supported_count, total_claims, approved_sources_used, raw_response.language
         ),
     )
     return raw_response

@@ -2,15 +2,18 @@
 
 import React from "react";
 import { X, ExternalLink, FileText, Calendar, ShieldCheck, AlertTriangle } from "lucide-react";
-import { CitationMetadata } from "@/lib/types";
+import { CitationMetadata, SupportedLanguage } from "@/lib/types";
+import { UI_COPY } from "@/lib/i18n";
 
 interface SourceViewerProps {
   citation: CitationMetadata | null;
+  language?: SupportedLanguage;
   onClose: () => void;
 }
 
-export function SourceViewer({ citation, onClose }: SourceViewerProps) {
+export function SourceViewer({ citation, language = "en", onClose }: SourceViewerProps) {
   if (!citation) return null;
+  const t = UI_COPY[language];
 
   const locatorParts: string[] = [];
   if (citation.section) locatorParts.push(`Section ${citation.section}${citation.subsection || ""}`);
@@ -42,7 +45,7 @@ export function SourceViewer({ citation, onClose }: SourceViewerProps) {
           <div className="space-y-1">
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-accent">
               <FileText className="h-3.5 w-3.5" />
-              <span>Exact Source Passage</span>
+              <span>{t.sourceViewerHeading}</span>
             </div>
             <h2 className="font-serif text-lg font-semibold text-ink">{citation.source_title}</h2>
             <p className="text-xs text-ink-muted">{citation.issuing_authority}</p>
@@ -62,7 +65,7 @@ export function SourceViewer({ citation, onClose }: SourceViewerProps) {
           <div className="grid grid-cols-1 gap-3 rounded-lg border border-border-subtle bg-canvas p-4 sm:grid-cols-2">
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
-                Exact Locator
+                {t.exactLocatorLabel}
               </div>
               <div className="mt-1 text-sm font-medium text-ink">
                 {locatorParts.join(" · ") || citation.heading || citation.chunk_id}
@@ -74,13 +77,13 @@ export function SourceViewer({ citation, onClose }: SourceViewerProps) {
 
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
-                Source Currency & Approval
+                {t.sourceCurrencyLabel}
               </div>
               <div className="mt-1 flex items-center gap-1.5">
                 {isApproved ? (
                   <span className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-2.5 py-0.5 text-xs font-medium text-accent">
                     <ShieldCheck className="h-3.5 w-3.5" />
-                    Approved Official Source
+                    {t.approvedOfficialBadge}
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">
@@ -107,7 +110,7 @@ export function SourceViewer({ citation, onClose }: SourceViewerProps) {
           <div>
             <div className="mb-2 flex items-center justify-between">
               <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                Verbatim Extracted Text
+                {t.verbatimTextLabel}
               </span>
               <span className="font-mono text-[11px] text-ink-muted">ID: {citation.chunk_id}</span>
             </div>
@@ -123,17 +126,17 @@ export function SourceViewer({ citation, onClose }: SourceViewerProps) {
           )}
         </div>
 
-        <div className="flex items-center justify-between border-t border-border-subtle bg-canvas px-6 py-3.5">
+        <div className="flex items-center justify-between gap-3 border-t border-border-subtle bg-canvas px-6 py-3.5">
           <span className="text-xs text-ink-muted">
-            Rendered directly from stored official corpus metadata.
+            {t.sourceViewerEnglishNote}
           </span>
           <a
             href={citation.official_url}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3.5 py-2 text-xs font-medium text-white transition-colors hover:bg-accent-hover"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-accent px-3.5 py-2 text-xs font-medium text-white transition-colors hover:bg-accent-hover"
           >
-            <span>Open Official Government Source</span>
+            <span>{t.openOfficialGovSource}</span>
             <ExternalLink className="h-3.5 w-3.5" />
           </a>
         </div>

@@ -29,8 +29,9 @@ class Settings:
         os.getenv("LLM_API_KEY", "") if os.getenv("LLM_API_KEY", "").startswith("sk-") else ""
     )
     LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "auto")
-    LLM_MODEL: str = os.getenv("LLM_MODEL", "gemini-2.5-flash")
+    LLM_MODEL: str = os.getenv("LLM_MODEL", "gemini-3.5-flash")
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "local-hybrid")
+    DISABLE_LLM: bool = os.getenv("SATYA_DISABLE_LLM", "0") == "1"
 
     # Paths
     DATA_DIR: Path = REPO_ROOT / "data"

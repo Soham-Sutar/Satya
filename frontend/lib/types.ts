@@ -1,3 +1,5 @@
+export type SupportedLanguage = "en" | "kn" | "hi";
+
 export type AnswerStatus =
   | "verified"
   | "partially_verified"
@@ -99,6 +101,7 @@ export interface EvidenceCoverage {
 export interface ChatResponse {
   request_id: string;
   domain: "consumer_rights_india";
+  language?: SupportedLanguage;
   status: AnswerStatus;
   issue_category: string;
   answer_markdown: string;

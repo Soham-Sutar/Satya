@@ -2,22 +2,69 @@
 
 import React from "react";
 import { ShieldAlert, HelpCircle, Ban, ExternalLink } from "lucide-react";
-import { AbstentionDetail, AnswerStatus } from "@/lib/types";
+import { AbstentionDetail, AnswerStatus, SupportedLanguage } from "@/lib/types";
 
 interface AbstentionCardProps {
   status: AnswerStatus;
   detail: AbstentionDetail;
+  language?: SupportedLanguage;
 }
 
-export function AbstentionCard({ status, detail }: AbstentionCardProps) {
+const CARD_COPY: Record<
+  SupportedLanguage,
+  {
+    clarificationTitle: string;
+    outOfScopeTitle: string;
+    cannotVerifyTitle: string;
+    foundLabel: string;
+    missingLabel: string;
+    nextStepLabel: string;
+    verifyPortalLabel: string;
+  }
+> = {
+  en: {
+    clarificationTitle: "Clarification Needed Before Answering",
+    outOfScopeTitle: "Outside Satya’s Consumer-Protection Scope",
+    cannotVerifyTitle: "Why Satya Won’t Answer",
+    foundLabel: "What Was Found",
+    missingLabel: "What Is Missing or Uncertain",
+    nextStepLabel: "Next step:",
+    verifyPortalLabel: "Verify on official portal",
+  },
+  kn: {
+    clarificationTitle: "ಉತ್ತರಿಸುವ ಮೊದಲು ಸ್ಪಷ್ಟೀಕರಣದ ಅಗತ್ಯವಿದೆ",
+    outOfScopeTitle: "ಸತ್ಯದ ಗ್ರಾಹಕ-ರಕ್ಷಣಾ ವ್ಯಾಪ್ತಿಯ ಹೊರಗಿದೆ",
+    cannotVerifyTitle: "ಸತ್ಯ ಏಕೆ ಉತ್ತರಿಸುವುದಿಲ್ಲ",
+    foundLabel: "ಏನು ಕಂಡುಬಂದಿದೆ",
+    missingLabel: "ಏನು ಕೊರತೆಯಿದೆ ಅಥವಾ ಅನಿಶ್ಚಿತವಾಗಿದೆ",
+    nextStepLabel: "ಮುಂದಿನ ಹಂತ:",
+    verifyPortalLabel: "ಅಧಿಕೃತ ಪೋರ್ಟಲ್‌ನಲ್ಲಿ ಪರಿಶೀಲಿಸಿ",
+  },
+  hi: {
+    clarificationTitle: "उत्तर देने से पहले स्पष्टीकरण आवश्यक है",
+    outOfScopeTitle: "सत्य के उपभोक्ता-संरक्षण दायरे से बाहर",
+    cannotVerifyTitle: "सत्य उत्तर क्यों नहीं दे सकता",
+    foundLabel: "क्या पाया गया",
+    missingLabel: "क्या गायब या अनिश्चित है",
+    nextStepLabel: "अगला कदम:",
+    verifyPortalLabel: "आधिकारिक पोर्टल पर सत्यापित करें",
+  },
+};
+
+export function AbstentionCard({
+  status,
+  detail,
+  language = "en",
+}: AbstentionCardProps) {
   const isClarification = status === "needs_clarification";
   const isOutOfScope = status === "out_of_scope";
+  const c = CARD_COPY[language];
 
   const title = isClarification
-    ? "Clarification Needed Before Answering"
+    ? c.clarificationTitle
     : isOutOfScope
-    ? "Outside Satya’s Consumer-Protection Scope"
-    : "Why Satya Won’t Answer";
+    ? c.outOfScopeTitle
+    : c.cannotVerifyTitle;
 
   const borderClass = isClarification
     ? "border-navy/30 bg-navy-soft/45"
@@ -46,13 +93,13 @@ export function AbstentionCard({ status, detail }: AbstentionCardProps) {
           <dl className="grid grid-cols-1 gap-3 rounded-md border border-border-subtle bg-surface p-3.5 text-xs sm:grid-cols-2">
             <div>
               <dt className="font-semibold uppercase tracking-wide text-ink-muted">
-                What Was Found
+                {c.foundLabel}
               </dt>
               <dd className="mt-1 text-ink leading-relaxed">{detail.what_was_found}</dd>
             </div>
             <div>
               <dt className="font-semibold uppercase tracking-wide text-ink-muted">
-                What Is Missing or Uncertain
+                {c.missingLabel}
               </dt>
               <dd className="mt-1 text-ink leading-relaxed">{detail.what_is_missing}</dd>
             </div>
@@ -60,7 +107,7 @@ export function AbstentionCard({ status, detail }: AbstentionCardProps) {
 
           <div className="flex flex-wrap items-center justify-between gap-3 pt-1 text-xs">
             <p className="text-ink-muted">
-              <strong className="font-semibold text-ink">Next step:</strong>{" "}
+              <strong className="font-semibold text-ink">{c.nextStepLabel}</strong>{" "}
               {detail.suggested_next_step}
             </p>
             {detail.official_verification_url && (
@@ -70,7 +117,7 @@ export function AbstentionCard({ status, detail }: AbstentionCardProps) {
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 font-medium text-accent hover:underline"
               >
-                <span>Verify on official portal</span>
+                <span>{c.verifyPortalLabel}</span>
                 <ExternalLink className="h-3 w-3" />
               </a>
             )}

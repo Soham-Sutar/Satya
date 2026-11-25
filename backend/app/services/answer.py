@@ -9,8 +9,9 @@ Grounded answer formulation service.
 from __future__ import annotations
 
 import json
+import logging
 import re
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from app.config import settings
 from app.models.schemas import (
@@ -20,10 +21,105 @@ from app.models.schemas import (
     ChatResponse,
     ClaimItem,
     SessionContext,
+    SupportedLanguage,
 )
 from app.services.evidence_gate import GateDecision
 from app.services.issue_classifier import ClassificationResult
 from app.services.retrieval import RetrievedPassage
+
+logger = logging.getLogger("satya.answer")
+_SKIP_GEMINI_MODELS: set[str] = set()
+
+LANGUAGE_NAMES: Dict[str, str] = {
+    "en": "English",
+    "kn": "Kannada (ಕನ್ನಡ)",
+    "hi": "Hindi (हिन्दी)",
+}
+
+
+def _has_target_script(text: str, language: str) -> bool:
+    if language == "kn":
+        return any("\u0c80" <= ch <= "\u0cff" for ch in text)
+    if language == "hi":
+        return any("\u0900" <= ch <= "\u097f" for ch in text)
+    return True
+
+
+def _parse_json_safe(raw: str) -> Optional[dict]:
+    s = raw.strip()
+    if s.startswith("```"):
+        s = re.sub(r"^```(?:json)?\s*|\s*```$", "", s, flags=re.S).strip()
+    return json.loads(s)
+
+
+def _gemini_generate_json(
+    user_payload: str,
+    system_instruction: Optional[str] = None,
+    temperature: float = 0.1,
+) -> Optional[dict]:
+    if settings.DISABLE_LLM:
+        return None
+    if not (
+        settings.GEMINI_API_KEY
+        or settings.LLM_PROVIDER in ("gemini", "google")
+        or (settings.LLM_API_KEY and settings.LLM_API_KEY.startswith("AIza"))
+        or settings.LLM_MODEL.startswith("gemini")
+    ):
+        return None
+
+    try:
+        from google import genai
+        from google.genai import types
+    except Exception:
+        return None
+
+    api_key = settings.GEMINI_API_KEY or settings.LLM_API_KEY
+    if not api_key:
+        return None
+
+    client = genai.Client(
+        api_key=api_key,
+        http_options=types.HttpOptions(
+            timeout=20000,
+            retry_options=types.HttpRetryOptions(attempts=1),
+        ),
+    )
+    candidates = list(
+        dict.fromkeys(
+            [
+                settings.LLM_MODEL or "gemini-3.5-flash",
+                "gemini-3.5-flash",
+                "gemini-3.5-flash-lite",
+                "gemini-3.6-flash",
+                "gemini-2.5-flash",
+            ]
+        )
+    )
+    for model_name in candidates:
+        if model_name in _SKIP_GEMINI_MODELS:
+            continue
+        try:
+            cfg = types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                temperature=temperature,
+                response_mime_type="application/json",
+            )
+            resp = client.models.generate_content(
+                model=model_name,
+                contents=user_payload,
+                config=cfg,
+            )
+            if resp and resp.text:
+                parsed = _parse_json_safe(resp.text)
+                if isinstance(parsed, dict):
+                    return parsed
+        except Exception as exc:
+            err_str = str(exc)
+            logger.warning("Gemini model=%s failed: %s", model_name, err_str[:220])
+            if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "404" in err_str or "NOT_FOUND" in err_str:
+                _SKIP_GEMINI_MODELS.add(model_name)
+            continue
+    return None
 
 
 def _load_system_prompt() -> str:
@@ -63,8 +159,9 @@ def _call_llm_json(
     passages: List[RetrievedPassage],
     session_context: Optional[SessionContext],
     history: List[ChatMessageTurn],
+    language: str = "en",
 ) -> Optional[dict]:
-    if not settings.LLM_API_KEY:
+    if settings.DISABLE_LLM or not settings.LLM_API_KEY:
         return None
 
     sys_prompt = _load_system_prompt()
@@ -73,33 +170,51 @@ def _call_llm_json(
     if classification.extracted_amount_inr is not None:
         ctx_summary["extracted_amount_inr"] = classification.extracted_amount_inr
 
-    schema_instruction = """
+    lang_instruction = {
+        "en": "OUTPUT LANGUAGE: Respond in clear, plain English.",
+        "kn": (
+            "CRITICAL OUTPUT LANGUAGE REQUIREMENT: You MUST write ALL prose in clear, natural Kannada (ಕನ್ನಡ script) for "
+            "`answer_markdown`, `claims[].text`, `action_plan[].text`, `clarifying_questions`, and `limitations`. "
+            "Do NOT answer in English prose. Keep ONLY exact `chunk_id` identifiers (like [cpa_2019_s2_11]) and official Act/Rule citations intact."
+        ),
+        "hi": (
+            "CRITICAL OUTPUT LANGUAGE REQUIREMENT: You MUST write ALL prose in clear, natural Hindi (हिन्दी Devanagari script) for "
+            "`answer_markdown`, `claims[].text`, `action_plan[].text`, `clarifying_questions`, and `limitations`. "
+            "Do NOT answer in English prose. Keep ONLY exact `chunk_id` identifiers (like [cpa_2019_s2_11]) and official Act/Rule citations intact."
+        ),
+    }.get(language, "OUTPUT LANGUAGE: Respond in clear, plain English.")
+
+    full_sys_prompt = f"{sys_prompt}\n\n{lang_instruction}"
+
+    schema_instruction = f"""
+{lang_instruction}
 Return ONLY valid JSON with this exact structure:
-{
+{{
   "status": "verified" | "partially_verified" | "cannot_verify" | "needs_clarification" | "out_of_scope",
-  "answer_markdown": "Clear plain-language answer strictly grounded in the evidence chunks, with inline [chunk_id] references where helpful. Never promise refunds or outcomes.",
+  "answer_markdown": "Clear plain-language answer in {LANGUAGE_NAMES.get(language, 'English')} strictly grounded in the evidence chunks, with inline [chunk_id] references. Never promise refunds or outcomes.",
   "claims": [
-    {
+    {{
       "claim_id": "c1",
-      "text": "One material legal or procedural claim supported by evidence.",
+      "text": "One material legal or procedural claim in {LANGUAGE_NAMES.get(language, 'English')} supported by evidence.",
       "evidence_status": "supported" | "partial",
       "citations": ["exact_chunk_id_from_context"]
-    }
+    }}
   ],
   "action_plan": [
-    {
-      "text": "Concrete step for the consumer.",
+    {{
+      "text": "Concrete step for the consumer in {LANGUAGE_NAMES.get(language, 'English')}.",
       "kind": "legal_requirement" | "conditional_requirement" | "practical_suggestion" | "professional_confirmation",
       "citations": ["exact_chunk_id_if_legal_or_conditional_else_empty"]
-    }
+    }}
   ],
   "clarifying_questions": [],
-  "limitations": ["Any statutory exceptions, provisos, or coverage boundaries."],
+  "limitations": ["Any statutory exceptions, provisos, or coverage boundaries in {LANGUAGE_NAMES.get(language, 'English')}."],
   "abstention_reason": null
-}
+}}
 """
-    recent_hist = "\n".join(f"{t.role.upper()}: {t.content}" for t in history[-4:])
+    recent_hist = "\n".join(f"{t.role.upper()}: {t.content}" for t in history[-8:])
     user_payload = (
+        f"TARGET RESPONSE LANGUAGE: {LANGUAGE_NAMES.get(language, 'English')}\n"
         f"DETECTED ISSUE CATEGORY: {classification.issue_category}\n"
         f"SESSION FACTS: {json.dumps(ctx_summary)}\n"
         f"RECENT CONVERSATION:\n{recent_hist or 'None'}\n\n"
@@ -108,27 +223,9 @@ Return ONLY valid JSON with this exact structure:
         f"{schema_instruction}"
     )
 
-    # Try Gemini if configured
-    if settings.GEMINI_API_KEY or settings.LLM_PROVIDER in ("gemini", "google") or settings.LLM_MODEL.startswith("gemini"):
-        try:
-            from google import genai
-            from google.genai import types
-
-            api_key = settings.GEMINI_API_KEY or settings.LLM_API_KEY
-            client = genai.Client(api_key=api_key)
-            resp = client.models.generate_content(
-                model=settings.LLM_MODEL or "gemini-2.5-flash",
-                contents=user_payload,
-                config=types.GenerateContentConfig(
-                    system_instruction=sys_prompt,
-                    temperature=0.1,
-                    response_mime_type="application/json",
-                ),
-            )
-            if resp and resp.text:
-                return json.loads(resp.text)
-        except Exception:
-            pass
+    gemini_res = _gemini_generate_json(user_payload, system_instruction=full_sys_prompt, temperature=0.1)
+    if gemini_res:
+        return gemini_res
 
     # Try OpenAI-compatible if configured
     if settings.OPENAI_API_KEY or settings.LLM_PROVIDER == "openai":
@@ -143,15 +240,15 @@ Return ONLY valid JSON with this exact structure:
                 temperature=0.1,
                 response_format={"type": "json_object"},
                 messages=[
-                    {"role": "system", "content": sys_prompt},
+                    {"role": "system", "content": full_sys_prompt},
                     {"role": "user", "content": user_payload},
                 ],
             )
             content = comp.choices[0].message.content
             if content:
-                return json.loads(content)
-        except Exception:
-            pass
+                return _parse_json_safe(content)
+        except Exception as exc:
+            logger.warning("OpenAI call failed: %s", str(exc)[:200])
 
     return None
 
@@ -347,6 +444,143 @@ def _extractive_grounded_answer(
     )
 
 
+def _localize_status_text(status: str, language: str, summary: str, clarifying_questions: List[str]) -> str:
+    if language == "kn":
+        if status == "out_of_scope":
+            return (
+                "ಸತ್ಯ (Satya) ಪ್ರಸ್ತುತ **ಭಾರತೀಯ ಗ್ರಾಹಕ ಹಕ್ಕುಗಳು ಮತ್ತು ರಕ್ಷಣೆ (Indian Consumer Rights & Protection)** "
+                "ವಿಷಯವನ್ನು ಮಾತ್ರ ಬೆಂಬಲಿಸುತ್ತದೆ.\n\n"
+                "ನಿಮ್ಮ ಪ್ರಶ್ನೆಯು ಭಾರತದಲ್ಲಿ ಖರೀದಿಸಿದ ಸರಕು ಅಥವಾ ಸೇವಾ ವಿವಾದಕ್ಕೆ ಸಂಬಂಧಿಸಿದ್ದರೆ, ದಯವಿಟ್ಟು ಆ ವಿವರಗಳನ್ನು ಹಂಚಿಕೊಳ್ಳಿ."
+            )
+        if status == "needs_clarification":
+            return (
+                "ನಿಖರವಾದ ಮತ್ತು ಅಧಿಕೃತ ಆಧಾರಿತ ಉತ್ತರವನ್ನು ನೀಡಲು ಸತ್ಯಕ್ಕೆ ಇನ್ನೂ ಒಂದು ಪ್ರಮುಖ ಮಾಹಿತಿ ಬೇಕಾಗಿದೆ:\n\n"
+                + "\n".join(f"- {q}" for q in clarifying_questions)
+            )
+        return (
+            "**ಅನುಮೋದಿತ ಅಧಿಕೃತ ಮೂಲಗಳಿಂದ ಈ ಮಾಹಿತಿಯನ್ನು ದೃಢೀಕರಿಸಲು ಸತ್ಯಕ್ಕೆ ಸಾಧ್ಯವಾಗಲಿಲ್ಲ.**\n\n"
+            f"{summary}"
+        )
+    if language == "hi":
+        if status == "out_of_scope":
+            return (
+                "सत्य (Satya) वर्तमान में केवल **भारतीय उपभोक्ता अधिकार और संरक्षण (Indian Consumer Rights & Protection)** "
+                "का समर्थन करता है।\n\n"
+                "यदि आपका विषय भारत में खरीदे गए किसी उत्पाद या भुगतान की गई सेवा के विवाद से जुड़ा है, तो कृपया वे विवरण साझा करें।"
+            )
+        if status == "needs_clarification":
+            return (
+                "बिना अनुमान लगाए सटीक और प्रमाणित उत्तर देने के लिए सत्य को एक आवश्यक तथ्य की जानकारी चाहिए:\n\n"
+                + "\n".join(f"- {q}" for q in clarifying_questions)
+            )
+        return (
+            "**अनुमोदित आधिकारिक स्रोतों से सत्य इस दावे की पुष्टि नहीं कर सका।**\n\n"
+            f"{summary}"
+        )
+    if status == "out_of_scope":
+        return (
+            "Satya currently supports **Indian Consumer Rights & Protection** only. "
+            f"{summary}\n\n"
+            "If your situation involves a consumer product or paid service dispute in India, please share those details so Satya can look up the relevant consumer-protection provisions."
+        )
+    if status == "needs_clarification":
+        q_list = "\n".join(f"- {q}" for q in clarifying_questions)
+        return (
+            "To give you an accurate, source-grounded answer without guessing, Satya needs one missing fact:\n\n"
+            f"{q_list}"
+        )
+    return (
+        f"**Satya cannot verify this claim from approved sources.**\n\n"
+        f"{summary or 'Insufficient approved evidence was retrieved.'}"
+    )
+
+
+def translate_chat_response(
+    response: ChatResponse, target_language: SupportedLanguage
+) -> ChatResponse:
+    """
+    Translates the human-readable prose fields of an already-grounded ChatResponse
+    into target_language ('en' | 'kn' | 'hi') without altering chunk_ids,
+    citation_details, official_links, or status.
+    """
+    if response.language == target_language and _has_target_script(response.answer_markdown, target_language):
+        return response
+
+    cloned = response.model_copy(deep=True)
+    cloned.language = target_language
+
+    # Always localize deterministic status/clarification wrapper cleanly if non-generation
+    if cloned.status in ("out_of_scope", "needs_clarification", "cannot_verify") and not cloned.claims:
+        cloned.answer_markdown = _localize_status_text(
+            cloned.status,
+            target_language,
+            cloned.abstention_reason.summary if cloned.abstention_reason else "",
+            cloned.clarifying_questions,
+        )
+
+    translatable_payload = {
+        "answer_markdown": cloned.answer_markdown,
+        "claims": [c.text for c in cloned.claims],
+        "action_plan": [a.text for a in cloned.action_plan],
+        "clarifying_questions": cloned.clarifying_questions,
+        "limitations": cloned.limitations,
+        "abstention_reason": (
+            {
+                "summary": cloned.abstention_reason.summary,
+                "what_was_found": cloned.abstention_reason.what_was_found,
+                "what_is_missing": cloned.abstention_reason.what_is_missing,
+                "suggested_next_step": cloned.abstention_reason.suggested_next_step,
+            }
+            if cloned.abstention_reason
+            else None
+        ),
+        "evidence_coverage_description": (
+            cloned.evidence_coverage.description if cloned.evidence_coverage else None
+        ),
+    }
+
+    target_name = LANGUAGE_NAMES.get(target_language, "English")
+    prompt = (
+        f"Translate ONLY the natural-language text values in this JSON object into clear, accurate {target_name}.\n"
+        "STRICT RULES:\n"
+        "1. Preserve every markdown formatting marker (`**...**`, `- `) and every `[chunk_id]` or `` `chunk_id` `` token verbatim without translating the chunk ID.\n"
+        "2. Do NOT invent new legal facts, sections, numbers, or remedies.\n"
+        "3. Keep the exact same JSON keys and array lengths.\n\n"
+        f"JSON TO TRANSLATE:\n{json.dumps(translatable_payload, ensure_ascii=False)}"
+    )
+
+    translated = _gemini_generate_json(
+        prompt,
+        system_instruction=f"You are a precise Indian legal-information translator. Output strictly valid JSON in {target_name}.",
+        temperature=0.0,
+    )
+
+    if translated and isinstance(translated, dict):
+        if isinstance(translated.get("answer_markdown"), str) and translated["answer_markdown"].strip():
+            cloned.answer_markdown = translated["answer_markdown"]
+        if isinstance(translated.get("claims"), list) and len(translated["claims"]) == len(cloned.claims):
+            for idx, txt in enumerate(translated["claims"]):
+                if isinstance(txt, str) and txt.strip():
+                    cloned.claims[idx].text = txt
+        if isinstance(translated.get("action_plan"), list) and len(translated["action_plan"]) == len(cloned.action_plan):
+            for idx, txt in enumerate(translated["action_plan"]):
+                if isinstance(txt, str) and txt.strip():
+                    cloned.action_plan[idx].text = txt
+        if isinstance(translated.get("clarifying_questions"), list):
+            cloned.clarifying_questions = [str(q) for q in translated["clarifying_questions"]]
+        if isinstance(translated.get("limitations"), list):
+            cloned.limitations = [str(l) for l in translated["limitations"]]
+        ab_t = translated.get("abstention_reason")
+        if cloned.abstention_reason and isinstance(ab_t, dict):
+            for fld in ("summary", "what_was_found", "what_is_missing", "suggested_next_step"):
+                if isinstance(ab_t.get(fld), str) and ab_t[fld].strip():
+                    setattr(cloned.abstention_reason, fld, ab_t[fld])
+        if cloned.evidence_coverage and isinstance(translated.get("evidence_coverage_description"), str):
+            cloned.evidence_coverage.description = translated["evidence_coverage_description"]
+
+    return cloned
+
+
 def generate_grounded_response(
     request_id: str,
     query: str,
@@ -354,32 +588,23 @@ def generate_grounded_response(
     gate: GateDecision,
     session_context: Optional[SessionContext],
     history: List[ChatMessageTurn],
+    language: str = "en",
     latency_ms: int = 0,
 ) -> ChatResponse:
     # Handle abstentions / clarifications / out-of-scope directly from the Evidence Gate
     if not gate.allow_generation:
         ab = gate.abstention_reason if hasattr(gate, "abstention_reason") else gate.abstention_detail
         status = gate.status_override or "cannot_verify"
-        if status == "out_of_scope":
-            md = (
-                "Satya currently supports **Indian Consumer Rights & Protection** only. "
-                f"{ab.summary if ab else ''}\n\n"
-                "If your situation involves a consumer product or paid service dispute in India, please share those details so Satya can look up the relevant consumer-protection provisions."
-            )
-        elif status == "needs_clarification":
-            q_list = "\n".join(f"- {q}" for q in classification.clarifying_questions)
-            md = (
-                "To give you an accurate, source-grounded answer without guessing, Satya needs one missing fact:\n\n"
-                f"{q_list}"
-            )
-        else:
-            md = (
-                f"**Satya cannot verify this claim from approved sources.**\n\n"
-                f"{ab.summary if ab else 'Insufficient approved evidence was retrieved.'}"
-            )
+        md = _localize_status_text(
+            status,
+            language,
+            ab.summary if ab else "",
+            classification.clarifying_questions,
+        )
 
-        return ChatResponse(
+        resp = ChatResponse(
             request_id=request_id,
+            language=language,  # type: ignore[arg-type]
             status=status,  # type: ignore[arg-type]
             issue_category=classification.issue_category,
             answer_markdown=md,
@@ -390,13 +615,17 @@ def generate_grounded_response(
             abstention_reason=ab,
             latency_ms=latency_ms,
         )
+        if language in ("kn", "hi") and not settings.DISABLE_LLM:
+            return translate_chat_response(resp, language)  # type: ignore[arg-type]
+        return resp
 
     passages = gate.filtered_passages
-    llm_raw = _call_llm_json(query, classification, passages, session_context, history)
+    llm_raw = _call_llm_json(query, classification, passages, session_context, history, language=language)
 
     if llm_raw and isinstance(llm_raw, dict):
         try:
             llm_raw.setdefault("request_id", request_id)
+            llm_raw["language"] = language
             llm_raw.setdefault("issue_category", classification.issue_category)
             # Merge gate freshness warnings into limitations
             lims = list(llm_raw.get("limitations") or [])
@@ -412,9 +641,12 @@ def generate_grounded_response(
                 "out_of_scope",
             ):
                 llm_raw["status"] = "partially_verified"
-            return ChatResponse(**llm_raw)
-        except Exception:
-            pass
+            resp = ChatResponse(**llm_raw)
+            if language in ("kn", "hi") and not _has_target_script(resp.answer_markdown, language):
+                return translate_chat_response(resp, language)  # type: ignore[arg-type]
+            return resp
+        except Exception as exc:
+            logger.warning("Failed to parse LLM JSON response: %s", str(exc)[:200])
 
     resp = _extractive_grounded_answer(
         query=query,
@@ -423,4 +655,7 @@ def generate_grounded_response(
         freshness_warnings=gate.freshness_warnings,
     )
     resp.request_id = request_id
+    resp.language = language  # type: ignore[arg-type]
+    if language in ("kn", "hi") and not settings.DISABLE_LLM:
+        return translate_chat_response(resp, language)  # type: ignore[arg-type]
     return resp

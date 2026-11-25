@@ -130,3 +130,90 @@ def test_eval_suite(case):
 
     if body["status"] in ("cannot_verify", "out_of_scope", "needs_clarification"):
         assert body["abstention_reason"] is not None
+
+
+def test_continuous_followup_context():
+    # Step 1: missing amount triggers clarification
+    r1 = client.post("/api/chat", json={"message": "Which Consumer Commission should I file my complaint in?"}).json()
+    assert r1["status"] == "needs_clarification"
+
+    # Step 2: follow-up supplies only the amount; must inherit commission question from history!
+    r2 = client.post(
+        "/api/chat",
+        json={
+            "message": "I paid ₹35 lakh for it.",
+            "history": [
+                {"role": "user", "content": "Which Consumer Commission should I file my complaint in?"},
+                {"role": "assistant", "content": r1["answer_markdown"]},
+            ],
+        },
+    ).json()
+    assert r2["status"] == "verified"
+    cited_sources = {m["source_id"] for m in r2["citation_details"].values()}
+    assert "jurisdiction_rules_2021" in cited_sources
+
+    # Step 3: follow-up about non-response after damaged phone online
+    r3 = client.post(
+        "/api/chat",
+        json={
+            "message": "What if they do not reply within 48 hours?",
+            "history": [
+                {"role": "user", "content": "I bought a phone online and it arrived with a damaged screen."},
+                {"role": "assistant", "content": "You have rights under the Consumer Protection Act, 2019 and E-Commerce Rules, 2020."},
+            ],
+        },
+    ).json()
+    assert r3["status"] in ("verified", "partially_verified")
+    assert len(r3["claims"]) >= 1
+
+
+def test_multilingual_kannada_and_hindi():
+    kn_res = client.post(
+        "/api/chat",
+        json={
+            "message": "ನಾನು ಆನ್‌ಲೈನ್‌ನಲ್ಲಿ ಫೋನ್ ಖರೀದಿಸಿದೆ ಮತ್ತು ಅದು ಹಾನಿಗೊಳಗಾದ ಪರದೆಯೊಂದಿಗೆ ಬಂದಿದೆ. ನಾನು ಏನು ಮಾಡಬಹುದು?",
+            "language": "kn",
+        },
+    ).json()
+    assert kn_res["language"] == "kn"
+    assert kn_res["status"] in ("verified", "partially_verified")
+    assert len(kn_res["citation_details"]) >= 1
+
+    hi_res = client.post(
+        "/api/chat",
+        json={
+            "message": "₹35 लाख से जुड़े दावे के लिए मुझे किस उपभोक्ता आयोग में जाना चाहिए?",
+            "language": "hi",
+        },
+    ).json()
+    assert hi_res["language"] == "hi"
+    assert hi_res["status"] in ("verified", "partially_verified")
+    assert any(m["source_id"] == "jurisdiction_rules_2021" for m in hi_res["citation_details"].values())
+
+    # Out-of-scope check in Hindi & Kannada must still be blocked!
+    hi_oos = client.post(
+        "/api/chat",
+        json={"message": "भारतीय पासपोर्ट नवीनीकरण के लिए आवेदन कैसे करें?", "language": "hi"},
+    ).json()
+    assert hi_oos["status"] == "out_of_scope"
+    assert hi_oos["language"] == "hi"
+
+
+def test_translate_response_preserves_citations():
+    en_res = client.post(
+        "/api/chat",
+        json={"message": "Show me the exact section that defines deficiency in service.", "language": "en"},
+    ).json()
+    assert en_res["status"] == "verified"
+    en_cites = set(en_res["citation_details"].keys())
+
+    tr_res = client.post(
+        "/api/translate-response",
+        json={"response": en_res, "target_language": "kn"},
+    )
+    assert tr_res.status_code == 200
+    body = tr_res.json()
+    assert body["language"] == "kn"
+    assert set(body["citation_details"].keys()) == en_cites
+    assert body["status"] == en_res["status"]
+

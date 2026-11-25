@@ -11,12 +11,14 @@ import {
   UserCheck,
   FileEdit,
 } from "lucide-react";
-import { ActionPlanItem, ActionPlanKind, CitationMetadata } from "@/lib/types";
+import { ActionPlanItem, ActionPlanKind, CitationMetadata, SupportedLanguage } from "@/lib/types";
 import { CitationChip, formatShortLocator } from "./CitationChip";
+import { UI_COPY } from "@/lib/i18n";
 
 interface ActionPlannerProps {
   actionPlan: ActionPlanItem[];
   citationDetails: Record<string, CitationMetadata>;
+  language?: SupportedLanguage;
   onOpenPassage: (chunkId: string) => void;
   userQuestion?: string;
 }
@@ -59,9 +61,11 @@ const READINESS_ITEMS = [
 export function ActionPlanner({
   actionPlan,
   citationDetails,
+  language = "en",
   onOpenPassage,
   userQuestion,
 }: ActionPlannerProps) {
+  const t = UI_COPY[language];
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [copied, setCopied] = useState(false);
   const [showDraft, setShowDraft] = useState(false);
@@ -104,10 +108,10 @@ export function ActionPlanner({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h3 className="font-serif text-base font-semibold text-ink">
-              Consumer Action Plan
+              {t.actionPlanTitle}
             </h3>
             <p className="text-xs text-ink-muted">
-              Statutory requirements are cited; practical preservation tips are labelled separately as advice.
+              {t.actionPlanSubtitle}
             </p>
           </div>
           {actionPlan.length > 0 && (
@@ -117,14 +121,14 @@ export function ActionPlanner({
               className="inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-surface px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-muted"
             >
               {copied ? <Check className="h-3.5 w-3.5 text-accent" /> : <Copy className="h-3.5 w-3.5" />}
-              <span>{copied ? "Copied with citations" : "Copy plan"}</span>
+              <span>{copied ? t.copiedPlanBtn : t.copyPlanBtn}</span>
             </button>
           )}
         </div>
 
         {actionPlan.length === 0 ? (
           <div className="rounded-lg border border-border-subtle bg-surface p-5 text-sm text-ink-muted">
-            Ask a verified consumer-rights question to generate a cited step-by-step action plan.
+            {t.emptyRightDescPlanner}
           </div>
         ) : (
           <ol className="space-y-2.5">
@@ -140,7 +144,7 @@ export function ActionPlanner({
                       className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${km.badgeClass}`}
                     >
                       {km.icon}
-                      <span>{km.label}</span>
+                      <span>{t.actionKinds[step.kind]}</span>
                     </span>
                     <span className="font-mono text-[11px] text-ink-muted">Step {idx + 1}</span>
                   </div>
@@ -169,10 +173,10 @@ export function ActionPlanner({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h4 className="font-serif text-sm font-semibold text-ink">
-              Complaint Readiness Checklist
+              {t.readinessTitle}
             </h4>
             <p className="text-xs text-ink-muted">
-              Self-check of information commonly needed before approaching NCH (1915) or filing via e-Jagriti. Does not determine legal validity or outcome.
+              {t.readinessSubtitle}
             </p>
           </div>
           <span className="rounded-full border border-border-subtle bg-surface px-2.5 py-0.5 text-xs font-medium text-ink">
@@ -213,7 +217,7 @@ export function ActionPlanner({
           >
             <FileEdit className="h-3.5 w-3.5" />
             <span>
-              {showDraft ? "Hide neutral complaint summary draft" : "Prepare neutral complaint summary draft (for your review)"}
+              {showDraft ? t.draftToggleHide : t.draftToggleShow}
             </span>
           </button>
 

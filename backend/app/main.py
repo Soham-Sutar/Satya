@@ -21,8 +21,9 @@ from app.models.schemas import (
     CoverageResponse,
     FeedbackRequest,
     SourceManifestRecord,
+    TranslateResponseRequest,
 )
-from app.services.answer import generate_grounded_response
+from app.services.answer import generate_grounded_response, translate_chat_response
 from app.services.citation_validator import validate_and_hydrate_response
 from app.services.evidence_gate import evaluate_evidence
 from app.services.issue_classifier import classify_query
@@ -126,15 +127,20 @@ def chat(req: ChatRequest) -> ChatResponse:
     t0 = time.perf_counter()
     request_id = str(uuid.uuid4())[:12]
 
-    # 1. Classify consumer issue & check scope / missing material facts
-    classification = classify_query(req.message, req.session_context)
+    # 1. Classify consumer issue & check scope / missing material facts (with follow-up history)
+    classification = classify_query(req.message, req.session_context, req.history)
+
+    # Build contextualized retrieval query when user asks a follow-up question or answers a clarification
+    retrieval_query = classification.normalized_query or req.message
+    if classification.is_followup and classification.normalized_history_query:
+        retrieval_query = f"{retrieval_query} {classification.normalized_history_query}"
 
     # 2. Retrieve from approved consumer-protection corpus only
     passages = []
     relevant_pending = []
     if not classification.is_out_of_scope and not classification.is_prompt_injection:
         passages, relevant_pending = retriever.retrieve(
-            query=req.message,
+            query=retrieval_query,
             issue_category=classification.issue_category,
             secondary_categories=classification.secondary_categories,
             top_k=7,
@@ -142,13 +148,13 @@ def chat(req: ChatRequest) -> ChatResponse:
 
     # 3. Evidence sufficiency, freshness & conflict gate
     gate = evaluate_evidence(
-        query=req.message,
+        query=retrieval_query,
         classification=classification,
         passages=passages,
         relevant_pending=relevant_pending,
     )
 
-    # 4. Grounded answer generation (LLM if configured, otherwise deterministic extractive synthesis)
+    # 4. Grounded answer generation (LLM in requested language if configured, else deterministic extractive synthesis)
     raw_resp = generate_grounded_response(
         request_id=request_id,
         query=req.message,
@@ -156,6 +162,7 @@ def chat(req: ChatRequest) -> ChatResponse:
         gate=gate,
         session_context=req.session_context,
         history=req.history,
+        language=req.language,
     )
 
     # 5. Server-side citation & claim validation + metadata hydration
@@ -179,6 +186,11 @@ def chat(req: ChatRequest) -> ChatResponse:
         final_resp.abstention_reason.category if final_resp.abstention_reason else "none",
     )
     return final_resp
+
+
+@app.post("/api/translate-response", response_model=ChatResponse)
+def translate_response_endpoint(req: TranslateResponseRequest) -> ChatResponse:
+    return translate_chat_response(req.response, req.target_language)
 
 
 @app.post("/api/feedback")

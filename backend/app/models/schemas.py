@@ -53,6 +53,9 @@ class SessionContext(BaseModel):
     personal_or_commercial: Optional[str] = None
 
 
+SupportedLanguage = Literal["en", "kn", "hi"]
+
+
 class ChatMessageTurn(BaseModel):
     role: Literal["user", "assistant"]
     content: str
@@ -60,8 +63,14 @@ class ChatMessageTurn(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=3000)
+    language: SupportedLanguage = "en"
     session_context: Optional[SessionContext] = None
     history: List[ChatMessageTurn] = Field(default_factory=list)
+
+
+class TranslateResponseRequest(BaseModel):
+    response: "ChatResponse"
+    target_language: SupportedLanguage
 
 
 class SourceManifestRecord(BaseModel):
@@ -173,6 +182,7 @@ class EvidenceCoverage(BaseModel):
 class ChatResponse(BaseModel):
     request_id: str
     domain: Literal["consumer_rights_india"] = "consumer_rights_india"
+    language: SupportedLanguage = "en"
     status: AnswerStatus
     issue_category: ConsumerIssueCategory
     answer_markdown: str
