@@ -184,6 +184,11 @@ def chat(req: ChatRequest) -> ChatResponse:
     # 5. Server-side citation & claim validation + metadata hydration
     if gate.allow_generation:
         final_resp = validate_and_hydrate_response(raw_resp, passages)
+        if req.language in ("kn", "hi") and final_resp.status == "cannot_verify" and final_resp.abstention_reason:
+            from app.services.answer import _has_target_script
+
+            if not _has_target_script(final_resp.abstention_reason.summary, req.language):
+                _, final_resp, _ = translate_chat_response(final_resp, req.language)
     else:
         final_resp = raw_resp
 

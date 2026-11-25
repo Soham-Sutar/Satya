@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+import re
 from dotenv import load_dotenv
 
 # Repo root is two levels up from backend/app/config.py
@@ -8,6 +9,10 @@ BACKEND_DIR = APP_DIR.parent
 REPO_ROOT = BACKEND_DIR.parent
 
 load_dotenv(REPO_ROOT / ".env")
+
+
+def _looks_like_ollama_key(key: str) -> bool:
+    return bool(key and re.match(r"^[0-9a-f]{32}\.[A-Za-z0-9_-]+$", key.strip()))
 
 
 class Settings:
@@ -40,7 +45,23 @@ class Settings:
     TRANSLATION_BASE_URL: str = os.getenv("TRANSLATION_BASE_URL", "")
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
     XAI_API_KEY: str = os.getenv("XAI_API_KEY") or os.getenv("GROK_API_KEY", "")
-    OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+    OLLAMA_API_KEY: str = (
+        os.getenv("OLLAMA_API_KEY")
+        or (os.getenv("TRANSLATION_API_KEY", "") if TRANSLATION_PROVIDER.lower() == "ollama" else "")
+        or (
+            os.getenv("LLM_API_KEY", "")
+            if (
+                LLM_PROVIDER.lower() == "ollama"
+                or TRANSLATION_PROVIDER.lower() == "ollama"
+                or _looks_like_ollama_key(os.getenv("LLM_API_KEY", ""))
+            )
+            else ""
+        )
+    )
+    OLLAMA_BASE_URL: str = (
+        os.getenv("OLLAMA_BASE_URL")
+        or ("https://ollama.com" if OLLAMA_API_KEY else "http://127.0.0.1:11434")
+    )
     OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "")
 
     # Paths

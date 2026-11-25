@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 import logging
 import re
+import time
 from typing import Dict, List, Optional
 
 import requests
@@ -33,6 +34,16 @@ from app.services.retrieval import RetrievedPassage
 
 logger = logging.getLogger("satya.answer")
 _SKIP_GEMINI_MODELS: set[str] = set()
+_TRANSLATION_CACHE: Dict[tuple[str, str], str] = {}
+_GOOGLE_COOLDOWN_UNTIL: float = 0.0
+_OLLAMA_MODEL_CACHE: Dict[str, Optional[str]] = {}
+_OLLAMA_PREFERRED_MODELS = (
+    "gemma4:31b",
+    "glm-5.3-flash",
+    "deepseek-v4.1-flash",
+    "gpt-oss:20b",
+    "qwen2.5:3b",
+)
 
 LANGUAGE_NAMES: Dict[str, str] = {
     "en": "English",
@@ -53,13 +64,23 @@ def _parse_json_safe(raw: str) -> Optional[dict]:
     s = raw.strip()
     if s.startswith("```"):
         s = re.sub(r"^```(?:json)?\s*|\s*```$", "", s, flags=re.S).strip()
-    return json.loads(s)
+    try:
+        return json.loads(s, strict=False)
+    except json.JSONDecodeError:
+        start = s.find("{")
+        end = s.rfind("}")
+        if start != -1 and end > start:
+            candidate = s[start : end + 1]
+            candidate = re.sub(r",\s*([}\]])", r"\1", candidate)
+            return json.loads(candidate, strict=False)
+        raise
 
 
 def _gemini_generate_json(
     user_payload: str,
     system_instruction: Optional[str] = None,
     temperature: float = 0.1,
+    response_schema: Optional[object] = None,
 ) -> Optional[dict]:
     if settings.DISABLE_LLM:
         return None
@@ -84,7 +105,7 @@ def _gemini_generate_json(
     client = genai.Client(
         api_key=api_key,
         http_options=types.HttpOptions(
-            timeout=9000,
+            timeout=25000,
             retry_options=types.HttpRetryOptions(attempts=1),
         ),
     )
@@ -106,7 +127,7 @@ def _gemini_generate_json(
     for model_name in candidates:
         if model_name in _SKIP_GEMINI_MODELS:
             continue
-        if tried >= 3:
+        if tried >= 6:
             break
         tried += 1
         try:
@@ -124,11 +145,14 @@ def _gemini_generate_json(
                     config=types.GenerateContentConfig(temperature=temperature),
                 )
             else:
-                cfg = types.GenerateContentConfig(
-                    system_instruction=system_instruction,
-                    temperature=temperature,
-                    response_mime_type="application/json",
-                )
+                cfg_kwargs = {
+                    "system_instruction": system_instruction,
+                    "temperature": temperature,
+                    "response_mime_type": "application/json",
+                }
+                if response_schema is not None:
+                    cfg_kwargs["response_schema"] = response_schema
+                cfg = types.GenerateContentConfig(**cfg_kwargs)
                 resp = client.models.generate_content(
                     model=model_name,
                     contents=user_payload,
@@ -141,10 +165,10 @@ def _gemini_generate_json(
         except Exception as exc:
             err_str = str(exc)
             logger.warning("Gemini model=%s failed: %s", model_name, err_str[:220])
-            is_daily_quota = ("429" in err_str or "RESOURCE_EXHAUSTED" in err_str) and (
-                "PerDay" in err_str or "FreeTier" in err_str
+            is_quota_exhausted = ("429" in err_str or "RESOURCE_EXHAUSTED" in err_str) and (
+                "PerDay" in err_str or "FreeTier" in err_str or "exceeded your current quota" in err_str
             )
-            if is_daily_quota or "404" in err_str or "NOT_FOUND" in err_str:
+            if is_quota_exhausted or "404" in err_str or "NOT_FOUND" in err_str:
                 _SKIP_GEMINI_MODELS.add(model_name)
             continue
     return None
@@ -251,6 +275,16 @@ Return ONLY valid JSON with this exact structure:
         f"{schema_instruction}"
     )
 
+    if settings.LLM_PROVIDER.lower() == "ollama":
+        ollama_res = _ollama_chat_json(
+            user_payload,
+            system_instruction=full_sys_prompt,
+            temperature=0.1,
+            for_translation=False,
+        )
+        if ollama_res:
+            return ollama_res
+
     gemini_res = _gemini_generate_json(user_payload, system_instruction=full_sys_prompt, temperature=0.1)
     if gemini_res:
         return gemini_res
@@ -277,6 +311,16 @@ Return ONLY valid JSON with this exact structure:
                 return _parse_json_safe(content)
         except Exception as exc:
             logger.warning("OpenAI call failed: %s", str(exc)[:200])
+
+    if settings.OLLAMA_API_KEY and settings.LLM_PROVIDER.lower() != "ollama":
+        ollama_res = _ollama_chat_json(
+            user_payload,
+            system_instruction=full_sys_prompt,
+            temperature=0.1,
+            for_translation=False,
+        )
+        if ollama_res:
+            return ollama_res
 
     return None
 
@@ -582,7 +626,18 @@ def _apply_translated_dict(
     if cloned.evidence_coverage and isinstance(translated.get("evidence_coverage_description"), str):
         cloned.evidence_coverage.description = translated["evidence_coverage_description"]
 
-    if target_language in ("kn", "hi") and not _has_target_script(cloned.answer_markdown, target_language):
+    if target_language in ("kn", "hi"):
+        if cloned.answer_markdown.strip() and not _has_target_script(cloned.answer_markdown, target_language):
+            return original_question, response, False
+        if cloned.claims and not any(_has_target_script(c.text, target_language) for c in cloned.claims):
+            return original_question, response, False
+        if cloned.action_plan and not any(_has_target_script(a.text, target_language) for a in cloned.action_plan):
+            return original_question, response, False
+    if target_language == "en" and (
+        _has_target_script(cloned.answer_markdown, "kn")
+        or _has_target_script(cloned.answer_markdown, "hi")
+        or any(_has_target_script(c.text, "kn") or _has_target_script(c.text, "hi") for c in cloned.claims)
+    ):
         return original_question, response, False
 
     cloned.language = target_language
@@ -622,41 +677,81 @@ def _translate_via_openai_compatible(
     return None
 
 
-def _detect_ollama_model() -> Optional[str]:
+def _ollama_base_url(for_translation: bool = False) -> str:
+    if for_translation and settings.TRANSLATION_PROVIDER.lower().strip() == "ollama" and settings.TRANSLATION_BASE_URL:
+        return settings.TRANSLATION_BASE_URL.rstrip("/")
+    return (settings.OLLAMA_BASE_URL or "http://127.0.0.1:11434").rstrip("/")
+
+
+def _ollama_headers(for_translation: bool = False) -> Dict[str, str]:
+    api_key = (
+        (settings.TRANSLATION_API_KEY if for_translation and settings.TRANSLATION_PROVIDER.lower().strip() == "ollama" else "")
+        or settings.OLLAMA_API_KEY
+    )
+    if api_key:
+        return {"Authorization": f"Bearer {api_key}"}
+    return {}
+
+
+def _detect_ollama_model(for_translation: bool = False) -> Optional[str]:
+    if for_translation and settings.TRANSLATION_PROVIDER.lower().strip() == "ollama" and settings.TRANSLATION_MODEL:
+        return settings.TRANSLATION_MODEL
     if settings.OLLAMA_MODEL:
         return settings.OLLAMA_MODEL
+
+    base_url = _ollama_base_url(for_translation=for_translation)
+    if base_url in _OLLAMA_MODEL_CACHE and _OLLAMA_MODEL_CACHE[base_url]:
+        return _OLLAMA_MODEL_CACHE[base_url]
+
+    timeout_sec = 4.0 if base_url.startswith("https://") else 0.5
     try:
-        r = requests.get(f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/tags", timeout=0.45)
+        r = requests.get(
+            f"{base_url}/api/tags",
+            headers=_ollama_headers(for_translation=for_translation),
+            timeout=timeout_sec,
+        )
         if r.status_code == 200:
             models = r.json().get("models") or []
-            if models:
-                return models[0].get("name")
+            names = [m.get("name") for m in models if m.get("name")]
+            chosen = next((pref for pref in _OLLAMA_PREFERRED_MODELS if pref in names), None)
+            if not chosen and names:
+                chosen = names[0]
+            if chosen:
+                _OLLAMA_MODEL_CACHE[base_url] = chosen
+                return chosen
     except Exception:
         return None
     return None
 
 
-def _translate_via_ollama(prompt: str, target_name: str) -> Optional[dict]:
-    model_name = _detect_ollama_model()
+def _ollama_chat_json(
+    user_payload: str,
+    system_instruction: str,
+    temperature: float = 0.0,
+    for_translation: bool = False,
+) -> Optional[dict]:
+    base_url = _ollama_base_url(for_translation=for_translation)
+    headers = _ollama_headers(for_translation=for_translation)
+    if base_url.startswith("https://") and not headers:
+        return None
+    model_name = _detect_ollama_model(for_translation=for_translation)
     if not model_name:
         return None
     try:
         r = requests.post(
-            f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/chat",
+            f"{base_url}/api/chat",
+            headers=headers,
             json={
                 "model": model_name,
                 "stream": False,
                 "format": "json",
-                "options": {"temperature": 0.0},
+                "options": {"temperature": temperature},
                 "messages": [
-                    {
-                        "role": "system",
-                        "content": f"You are a precise Indian legal-information translator. Output strictly valid JSON in {target_name}.",
-                    },
-                    {"role": "user", "content": prompt},
+                    {"role": "system", "content": system_instruction},
+                    {"role": "user", "content": user_payload},
                 ],
             },
-            timeout=15.0,
+            timeout=25.0,
         )
         if r.status_code == 200:
             content = (r.json().get("message") or {}).get("content", "")
@@ -664,9 +759,26 @@ def _translate_via_ollama(prompt: str, target_name: str) -> Optional[dict]:
                 parsed = _parse_json_safe(content)
                 if isinstance(parsed, dict):
                     return parsed
+        else:
+            logger.warning(
+                "Ollama request failed (%s / %s, status=%s): %s",
+                base_url,
+                model_name,
+                r.status_code,
+                r.text[:220],
+            )
     except Exception as exc:
-        logger.warning("Ollama translation failed: %s", str(exc)[:180])
+        logger.warning("Ollama request error (%s / %s): %s", base_url, model_name, str(exc)[:180])
     return None
+
+
+def _translate_via_ollama(prompt: str, target_name: str) -> Optional[dict]:
+    return _ollama_chat_json(
+        user_payload=prompt,
+        system_instruction=f"You are a precise Indian legal-information translator. Output strictly valid JSON in {target_name}.",
+        temperature=0.0,
+        for_translation=True,
+    )
 
 
 def _protect_citation_tokens(text: str) -> tuple[str, list[str]]:
@@ -688,10 +800,30 @@ def _restore_citation_tokens(text: str, tokens: list[str]) -> str:
     return out
 
 
-def _fast_translate_single(text: str, target_language: str) -> str:
-    if not text or not text.strip():
-        return text
-    protected, tokens = _protect_citation_tokens(text)
+def _chunk_text_for_translation(text: str, limit: int = 420) -> list[str]:
+    chunks: list[str] = []
+    for line in text.split("\n"):
+        if len(line) <= limit:
+            chunks.append(line)
+            continue
+        cur = ""
+        for word in line.split(" "):
+            if not cur:
+                cur = word
+            elif len(cur) + len(word) + 1 <= limit:
+                cur = f"{cur} {word}"
+            else:
+                chunks.append(cur)
+                cur = word
+        if cur:
+            chunks.append(cur)
+    return chunks
+
+
+def _google_gtx_translate(protected: str, target_language: str) -> Optional[str]:
+    global _GOOGLE_COOLDOWN_UNTIL
+    if time.time() < _GOOGLE_COOLDOWN_UNTIL or len(protected) > 1200:
+        return None
     try:
         resp = requests.get(
             "https://translate.googleapis.com/translate_a/single",
@@ -708,18 +840,79 @@ def _fast_translate_single(text: str, target_language: str) -> str:
             data = resp.json()
             translated = "".join(seg[0] for seg in (data[0] or []) if seg and seg[0])
             if translated.strip():
-                return _restore_citation_tokens(translated, tokens)
+                return translated
+        elif resp.status_code == 429:
+            _GOOGLE_COOLDOWN_UNTIL = time.time() + 120.0
+            logger.warning("Google gtx translator rate-limited (429); switching to MyMemory fallback for 120s.")
     except Exception as exc:
         logger.warning("Fast translator single call failed: %s", str(exc)[:140])
-    return text
+    return None
 
 
-def _fast_translate_batch_payload(batch_payload: dict, target_language: SupportedLanguage) -> Optional[dict]:
-    """
-    Translates all string leaves inside batch_payload['items'] concurrently in < 1.5s
-    while preserving chunk_id tokens verbatim.
-    """
-    items = batch_payload.get("items") or []
+def _mymemory_source_locale(text: str, target_language: str) -> Optional[str]:
+    if _has_target_script(text, "kn"):
+        return None if target_language == "kn" else "kn-IN"
+    if _has_target_script(text, "hi"):
+        return None if target_language == "hi" else "hi-IN"
+    return None if target_language == "en" else "en-IN"
+
+
+def _mymemory_translate(protected: str, target_language: str) -> Optional[str]:
+    source_locale = _mymemory_source_locale(protected, target_language)
+    if not source_locale:
+        return protected
+    target_locale = {"en": "en-IN", "kn": "kn-IN", "hi": "hi-IN"}.get(target_language, "en-IN")
+    try:
+        from deep_translator import MyMemoryTranslator
+    except Exception as exc:
+        logger.warning("deep_translator import failed: %s", str(exc)[:140])
+        return None
+
+    translator = MyMemoryTranslator(source=source_locale, target=target_locale)
+    lines = _chunk_text_for_translation(protected, limit=420)
+    out_lines: list[str] = []
+    for line in lines:
+        if not line.strip():
+            out_lines.append(line)
+            continue
+        try:
+            translated_line = translator.translate(line)
+            out_lines.append(translated_line if isinstance(translated_line, str) and translated_line.strip() else line)
+        except Exception as exc:
+            logger.warning("MyMemory chunk translation failed: %s", str(exc)[:140])
+            out_lines.append(line)
+    joined = "\n".join(out_lines)
+    if target_language in ("kn", "hi") and not _has_target_script(joined, target_language):
+        return None
+    return joined
+
+
+def _fast_translate_single(text: str, target_language: str) -> str:
+    if not text or not text.strip():
+        return text
+    cache_key = (target_language, text)
+    if cache_key in _TRANSLATION_CACHE:
+        return _TRANSLATION_CACHE[cache_key]
+
+    protected, tokens = _protect_citation_tokens(text)
+    translated_protected = _google_gtx_translate(protected, target_language)
+    if (
+        not translated_protected
+        or (target_language in ("kn", "hi") and not _has_target_script(translated_protected, target_language))
+    ):
+        translated_protected = _mymemory_translate(protected, target_language)
+
+    if not translated_protected:
+        return text
+
+    restored = _restore_citation_tokens(translated_protected, tokens)
+    if len(_TRANSLATION_CACHE) > 2000:
+        _TRANSLATION_CACHE.clear()
+    _TRANSLATION_CACHE[cache_key] = restored
+    return restored
+
+
+def _collect_translation_tasks(items: list[dict]) -> list[tuple[int, str, Optional[int], str]]:
     tasks: list[tuple[int, str, Optional[int], str]] = []
     for i, item in enumerate(items):
         for key in ("question", "answer_markdown", "evidence_coverage_description"):
@@ -737,25 +930,17 @@ def _fast_translate_batch_payload(batch_payload: dict, target_language: Supporte
                 val = ab.get(fld)
                 if isinstance(val, str) and val.strip():
                     tasks.append((i, f"ab.{fld}", None, val))
+    return tasks
 
-    if not tasks:
-        return batch_payload
 
-    results: list[str] = [""] * len(tasks)
-    with ThreadPoolExecutor(max_workers=6) as pool:
-        futures = {
-            pool.submit(_fast_translate_single, t[3], target_language): idx
-            for idx, t in enumerate(tasks)
-        }
-        for fut, idx in futures.items():
-            try:
-                results[idx] = fut.result()
-            except Exception:
-                results[idx] = tasks[idx][3]
-
+def _apply_translation_tasks(
+    items: list[dict],
+    tasks: list[tuple[int, str, Optional[int], str]],
+    translated_map: dict[str, str],
+) -> dict:
     out_items = json.loads(json.dumps(items, ensure_ascii=False))
-    for idx, (i, key, j, _) in enumerate(tasks):
-        val = results[idx]
+    for i, key, j, orig in tasks:
+        val = translated_map.get(orig, orig)
         if key.startswith("ab."):
             fld = key[3:]
             out_items[i]["abstention_reason"][fld] = val
@@ -763,90 +948,198 @@ def _fast_translate_batch_payload(batch_payload: dict, target_language: Supporte
             out_items[i][key][j] = val
         else:
             out_items[i][key] = val
-
     return {"items": out_items}
+
+
+def _fast_translate_batch_payload(batch_payload: dict, target_language: SupportedLanguage) -> Optional[dict]:
+    """
+    Translates all string leaves inside batch_payload['items'] concurrently
+    while preserving chunk_id tokens verbatim.
+    """
+    items = batch_payload.get("items") or []
+    tasks = _collect_translation_tasks(items)
+    if not tasks:
+        return batch_payload
+
+    unique_texts = list(dict.fromkeys(t[3] for t in tasks))
+    translated_map: dict[str, str] = {}
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        futures = {
+            pool.submit(_fast_translate_single, txt, target_language): txt
+            for txt in unique_texts
+        }
+        for fut, orig in futures.items():
+            try:
+                translated_map[orig] = fut.result()
+            except Exception:
+                translated_map[orig] = orig
+
+    return _apply_translation_tasks(items, tasks, translated_map)
+
+
+def _gemini_translation_schema():
+    try:
+        from google.genai import types
+
+        return types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "translations": types.Schema(
+                    type=types.Type.ARRAY,
+                    items=types.Schema(type=types.Type.STRING),
+                )
+            },
+            required=["translations"],
+        )
+    except Exception:
+        return None
+
+
+def _extract_translations_list(res: Optional[dict], expected_len: int) -> Optional[list[str]]:
+    if not isinstance(res, dict):
+        return None
+    arr = res.get("translations")
+    if isinstance(arr, list) and len(arr) == expected_len and all(isinstance(x, str) for x in arr):
+        return arr
+    return None
 
 
 def _run_translation_json(
     batch_payload: dict,
-    prompt: str,
     target_language: SupportedLanguage,
 ) -> Optional[dict]:
     """
-    Dispatches translation according to configured dedicated provider:
-    Ollama (local) -> Groq -> xAI Grok -> OpenAI -> Fast built-in neural translator -> Gemini.
+    Translates unique string leaves in batch_payload['items'] using a flat
+    `{"strings": [...]}` -> `{"translations": [...]}` protocol so LLMs never
+    corrupt nested JSON structure or chunk_ids.
+    Provider order: Ollama (cloud/local) -> Groq -> xAI Grok -> OpenAI -> Gemini (strict schema) -> Fast fallback.
     """
     if settings.DISABLE_LLM:
         return None
 
-    target_name = LANGUAGE_NAMES.get(target_language, "English")
-    pref = (settings.TRANSLATION_PROVIDER or "auto").lower().strip()
+    items = batch_payload.get("items") or []
+    tasks = _collect_translation_tasks(items)
+    if not tasks:
+        return batch_payload
 
-    # 1. Explicit or auto-detected local Ollama
-    if pref == "ollama" or settings.OLLAMA_MODEL:
-        res = _translate_via_ollama(prompt, target_name)
-        if res:
-            return res
+    unique_texts = list(dict.fromkeys(t[3] for t in tasks))
+    translated_map: dict[str, str] = {}
+    uncached: list[str] = []
+    for txt in unique_texts:
+        cached = _TRANSLATION_CACHE.get((target_language, txt))
+        if cached is not None:
+            translated_map[txt] = cached
+        else:
+            uncached.append(txt)
+
+    if not uncached:
+        return _apply_translation_tasks(items, tasks, translated_map)
+
+    protected_inputs: list[str] = []
+    token_lists: list[list[str]] = []
+    for txt in uncached:
+        prot, toks = _protect_citation_tokens(txt)
+        protected_inputs.append(prot)
+        token_lists.append(toks)
+
+    target_name = LANGUAGE_NAMES.get(target_language, "English")
+    prompt = (
+        f"Translate each string in the JSON array `strings` into clear, accurate {target_name}.\n"
+        "STRICT RULES:\n"
+        "1. Return ONLY a JSON object `{\"translations\": [...]}` whose array length equals `strings` length "
+        f"({len(protected_inputs)} items, 1-to-1 in the exact same order).\n"
+        "2. Preserve markdown markers (`**...**`, `- `) and every `[[SATYACID...]]` placeholder token verbatim.\n"
+        "3. Do NOT invent new legal facts, sections, numbers, or remedies.\n\n"
+        f"{json.dumps({'strings': protected_inputs}, ensure_ascii=False)}"
+    )
+
+    pref = (settings.TRANSLATION_PROVIDER or "auto").lower().strip()
+    translations_out: Optional[list[str]] = None
+
+    # 1. Explicit or API-key-configured Ollama (Cloud or local)
+    if pref == "ollama" or settings.OLLAMA_MODEL or settings.OLLAMA_API_KEY:
+        translations_out = _extract_translations_list(
+            _translate_via_ollama(prompt, target_name), len(protected_inputs)
+        )
 
     # 2. Groq (ultra-fast OpenAI-compatible)
-    if pref == "groq" or (pref == "auto" and settings.GROQ_API_KEY):
+    if translations_out is None and (pref == "groq" or (pref == "auto" and settings.GROQ_API_KEY)):
         key = settings.TRANSLATION_API_KEY or settings.GROQ_API_KEY
         if key:
-            res = _translate_via_openai_compatible(
-                settings.TRANSLATION_BASE_URL or "https://api.groq.com/openai/v1",
-                key,
-                settings.TRANSLATION_MODEL or "llama-3.3-70b-versatile",
-                prompt,
-                target_name,
+            translations_out = _extract_translations_list(
+                _translate_via_openai_compatible(
+                    settings.TRANSLATION_BASE_URL or "https://api.groq.com/openai/v1",
+                    key,
+                    settings.TRANSLATION_MODEL or "llama-3.3-70b-versatile",
+                    prompt,
+                    target_name,
+                ),
+                len(protected_inputs),
             )
-            if res:
-                return res
 
     # 3. xAI Grok
-    if pref in ("grok", "xai") or (pref == "auto" and settings.XAI_API_KEY):
+    if translations_out is None and (pref in ("grok", "xai") or (pref == "auto" and settings.XAI_API_KEY)):
         key = settings.TRANSLATION_API_KEY or settings.XAI_API_KEY
         if key:
-            res = _translate_via_openai_compatible(
-                settings.TRANSLATION_BASE_URL or "https://api.x.ai/v1",
-                key,
-                settings.TRANSLATION_MODEL or "grok-3-mini",
-                prompt,
-                target_name,
+            translations_out = _extract_translations_list(
+                _translate_via_openai_compatible(
+                    settings.TRANSLATION_BASE_URL or "https://api.x.ai/v1",
+                    key,
+                    settings.TRANSLATION_MODEL or "grok-3-mini",
+                    prompt,
+                    target_name,
+                ),
+                len(protected_inputs),
             )
-            if res:
-                return res
 
     # 4. OpenAI / custom OpenAI-compatible endpoint
-    if pref == "openai" or (pref == "auto" and (settings.OPENAI_API_KEY or settings.TRANSLATION_API_KEY)):
+    if translations_out is None and (
+        pref == "openai" or (pref == "auto" and (settings.OPENAI_API_KEY or settings.TRANSLATION_API_KEY))
+    ):
         key = settings.TRANSLATION_API_KEY or settings.OPENAI_API_KEY
         if key:
-            res = _translate_via_openai_compatible(
-                settings.TRANSLATION_BASE_URL or "https://api.openai.com/v1",
-                key,
-                settings.TRANSLATION_MODEL or "gpt-4o-mini",
-                prompt,
-                target_name,
+            translations_out = _extract_translations_list(
+                _translate_via_openai_compatible(
+                    settings.TRANSLATION_BASE_URL or "https://api.openai.com/v1",
+                    key,
+                    settings.TRANSLATION_MODEL or "gpt-4o-mini",
+                    prompt,
+                    target_name,
+                ),
+                len(protected_inputs),
             )
-            if res:
-                return res
 
     # 5. Auto-detect local Ollama if running on port 11434 (even when TRANSLATION_PROVIDER=auto)
-    if pref == "auto":
-        res = _translate_via_ollama(prompt, target_name)
-        if res:
-            return res
-
-    # 6. Explicit Gemini if requested
-    if pref == "gemini":
-        res = _gemini_generate_json(
-            prompt,
-            system_instruction=f"You are a precise Indian legal-information translator. Output strictly valid JSON in {target_name}.",
-            temperature=0.0,
+    if translations_out is None and pref == "auto":
+        translations_out = _extract_translations_list(
+            _translate_via_ollama(prompt, target_name), len(protected_inputs)
         )
-        if res:
-            return res
 
-    # 7. Fast zero-wait built-in neural translator (sub-second, never hangs on Gemini 503!)
+    # 6. Gemini with strict response_schema (prevents JSON syntax failures on long Kannada/Hindi output)
+    if translations_out is None and (pref == "gemini" or (pref != "fast" and settings.GEMINI_API_KEY)):
+        translations_out = _extract_translations_list(
+            _gemini_generate_json(
+                prompt,
+                system_instruction=f"You are a precise Indian legal-information translator. Output strictly valid JSON in {target_name}.",
+                temperature=0.0,
+                response_schema=_gemini_translation_schema(),
+            ),
+            len(protected_inputs),
+        )
+
+    if translations_out is not None:
+        if len(_TRANSLATION_CACHE) > 2000:
+            _TRANSLATION_CACHE.clear()
+        for orig, tr_prot, toks in zip(uncached, translations_out, token_lists):
+            restored = _restore_citation_tokens(tr_prot, toks) if tr_prot.strip() else orig
+            if target_language in ("kn", "hi") and re.search(r"[A-Za-z]{4,}", orig) and not _has_target_script(restored, target_language):
+                restored = _fast_translate_single(orig, target_language)
+            translated_map[orig] = restored
+            if target_language not in ("kn", "hi") or _has_target_script(restored, target_language):
+                _TRANSLATION_CACHE[(target_language, orig)] = restored
+        return _apply_translation_tasks(items, tasks, translated_map)
+
+    # 7. Fast zero-wait built-in neural translator fallback
     return _fast_translate_batch_payload(batch_payload, target_language)
 
 
@@ -854,8 +1147,12 @@ def active_translation_provider_label() -> str:
     if settings.DISABLE_LLM:
         return "disabled"
     pref = (settings.TRANSLATION_PROVIDER or "auto").lower().strip()
-    if pref == "ollama" or settings.OLLAMA_MODEL or _detect_ollama_model():
-        return f"ollama:{_detect_ollama_model() or 'configured'}"
+    if pref == "ollama" or settings.OLLAMA_MODEL or settings.OLLAMA_API_KEY:
+        model = _detect_ollama_model(for_translation=True) or "configured"
+        return f"ollama:{model}"
+    local_model = _detect_ollama_model(for_translation=True)
+    if local_model:
+        return f"ollama:{local_model}"
     if pref == "groq" or settings.GROQ_API_KEY:
         return "groq"
     if pref in ("grok", "xai") or settings.XAI_API_KEY:
@@ -865,6 +1162,36 @@ def active_translation_provider_label() -> str:
     if pref == "gemini":
         return "gemini"
     return "fast-neural-translator"
+
+
+def _response_matches_language(
+    response: ChatResponse, target_language: str, question: Optional[str] = None
+) -> bool:
+    if response.language != target_language:
+        return False
+    if target_language in ("kn", "hi"):
+        if response.answer_markdown.strip() and not _has_target_script(response.answer_markdown, target_language):
+            return False
+        if response.claims and not any(_has_target_script(c.text, target_language) for c in response.claims):
+            return False
+        if response.action_plan and not any(_has_target_script(a.text, target_language) for a in response.action_plan):
+            return False
+        if (
+            response.abstention_reason
+            and response.abstention_reason.summary.strip()
+            and not _has_target_script(response.abstention_reason.summary, target_language)
+        ):
+            return False
+        if question and question.strip() and not _has_target_script(question, target_language):
+            return False
+        return True
+    if _has_target_script(response.answer_markdown, "kn") or _has_target_script(response.answer_markdown, "hi"):
+        return False
+    if any(_has_target_script(c.text, "kn") or _has_target_script(c.text, "hi") for c in response.claims):
+        return False
+    if question and (_has_target_script(question, "kn") or _has_target_script(question, "hi")):
+        return False
+    return True
 
 
 def translate_chat_response(
@@ -877,15 +1204,7 @@ def translate_chat_response(
     ChatResponse into target_language ('en' | 'kn' | 'hi') without altering chunk_ids,
     citation_details, official_links, or status.
     """
-    already_target_resp = response.language == target_language and _has_target_script(
-        response.answer_markdown, target_language
-    )
-    already_target_q = question is None or _has_target_script(question, target_language)
-    if already_target_resp and already_target_q and target_language != "en":
-        return question, response, True
-    if target_language == "en" and response.language == "en" and (
-        question is None or not (_has_target_script(question, "kn") or _has_target_script(question, "hi"))
-    ):
+    if _response_matches_language(response, target_language, question=question):
         return question, response, True
 
     cloned = response.model_copy(deep=True)
@@ -905,17 +1224,7 @@ def translate_chat_response(
             }
         ]
     }
-    target_name = LANGUAGE_NAMES.get(target_language, "English")
-    prompt = (
-        f"Translate ONLY the natural-language string values inside `items[0]` into clear, accurate {target_name}.\n"
-        "STRICT RULES:\n"
-        "1. Preserve every markdown marker (`**...**`, `- `) and every `[chunk_id]` or `` `chunk_id` `` token verbatim without translating the chunk ID.\n"
-        "2. Keep null values as null and do NOT invent new legal facts, sections, numbers, or remedies.\n"
-        "3. Keep the exact same JSON keys and array lengths.\n\n"
-        f"JSON TO TRANSLATE:\n{json.dumps(batch_payload, ensure_ascii=False)}"
-    )
-
-    translated = _run_translation_json(batch_payload, prompt, target_language)
+    translated = _run_translation_json(batch_payload, target_language)
     if translated and isinstance(translated.get("items"), list) and translated["items"]:
         row = translated["items"][0]
         if isinstance(row, dict):
@@ -932,7 +1241,7 @@ def translate_thread_items(
 ) -> tuple[List[TranslateThreadItem], bool]:
     """
     Batch-translates an entire conversation thread (both questions and responses)
-    into target_language via Ollama / Groq / Grok / OpenAI / fast neural translator.
+    into target_language via Ollama / Groq / Grok / OpenAI / Gemini / fast neural translator.
     """
     if not items:
         return [], True
@@ -946,17 +1255,7 @@ def translate_thread_items(
             for it in items
         ]
     }
-    target_name = LANGUAGE_NAMES.get(target_language, "English")
-    prompt = (
-        f"Translate ONLY the natural-language string values inside `items[]` into clear, natural {target_name}.\n"
-        "STRICT RULES:\n"
-        "1. Return a JSON object with key `items` matching the exact same length and `id` values.\n"
-        "2. Translate `question`, `answer_markdown`, `claims[]`, `action_plan[]`, `clarifying_questions[]`, `limitations[]`, `abstention_reason` text fields, and `evidence_coverage_description`.\n"
-        "3. Preserve every `[chunk_id]` or `` `chunk_id` `` identifier verbatim without translating it, and keep official Act names/section numbers accurate.\n"
-        "4. Keep null fields as null.\n\n"
-        f"JSON TO TRANSLATE:\n{json.dumps(batch_payload, ensure_ascii=False)}"
-    )
-    translated = _run_translation_json(batch_payload, prompt, target_language)
+    translated = _run_translation_json(batch_payload, target_language)
     if not translated or not isinstance(translated.get("items"), list):
         return items, False
 
@@ -1049,8 +1348,10 @@ def generate_grounded_response(
                 "out_of_scope",
             ):
                 llm_raw["status"] = "partially_verified"
+            if classification.asks_for_guarantee_or_unsupported and llm_raw.get("status") == "verified":
+                llm_raw["status"] = "partially_verified"
             resp = ChatResponse(**llm_raw)
-            if language in ("kn", "hi") and not _has_target_script(resp.answer_markdown, language):
+            if language in ("kn", "hi") and not _response_matches_language(resp, language):
                 _, tr_resp, _ = translate_chat_response(resp, language)  # type: ignore[arg-type]
                 return tr_resp
             return resp

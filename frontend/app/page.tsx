@@ -39,6 +39,32 @@ const LANGUAGE_STORAGE_KEY = "satya_language_v1";
 function hasTargetScriptClient(text: string, lang: SupportedLanguage): boolean {
   if (lang === "kn") return /[\u0C80-\u0CFF]/.test(text);
   if (lang === "hi") return /[\u0900-\u097F]/.test(text);
+  return !/[\u0C80-\u0CFF\u0900-\u097F]/.test(text);
+}
+
+function responseMatchesLanguageClient(
+  resp: ConversationEntry["response"],
+  lang: SupportedLanguage
+): boolean {
+  if ((resp.language || "en") !== lang) return false;
+  if (resp.answer_markdown.trim() && !hasTargetScriptClient(resp.answer_markdown, lang)) {
+    return false;
+  }
+  if (lang === "kn" || lang === "hi") {
+    if (resp.claims.length > 0 && !resp.claims.some((c) => hasTargetScriptClient(c.text, lang))) {
+      return false;
+    }
+    if (
+      resp.action_plan.length > 0 &&
+      !resp.action_plan.some((a) => hasTargetScriptClient(a.text, lang))
+    ) {
+      return false;
+    }
+  } else {
+    if (resp.claims.some((c) => !hasTargetScriptClient(c.text, "en"))) {
+      return false;
+    }
+  }
   return true;
 }
 
@@ -139,16 +165,10 @@ export default function SatyaHomePage() {
     // 1. Apply any valid cached translation immediately (only if BOTH question and response match target script)
     const withCached = threadEntries.map((e) => {
       const cached = e.translations?.[targetLang];
-      const qMatches =
-        targetLang === "en"
-          ? !!cached &&
-            !hasTargetScriptClient(cached.question, "kn") &&
-            !hasTargetScriptClient(cached.question, "hi")
-          : !!cached && hasTargetScriptClient(cached.question, targetLang);
       if (
         cached &&
-        qMatches &&
-        hasTargetScriptClient(cached.response.answer_markdown, targetLang)
+        hasTargetScriptClient(cached.question, targetLang) &&
+        responseMatchesLanguageClient(cached.response, targetLang)
       ) {
         return {
           ...e,
@@ -160,18 +180,13 @@ export default function SatyaHomePage() {
     });
 
     // Determine which entries still need server batch translation
-    const toTranslate = withCached.filter((e) => {
-      const respLang = (e.response.language || "en") as SupportedLanguage;
-      const respMatches =
-        respLang === targetLang &&
-        hasTargetScriptClient(e.response.answer_markdown, targetLang);
-      const qMatches =
-        targetLang === "en"
-          ? !hasTargetScriptClient(e.question, "kn") &&
-            !hasTargetScriptClient(e.question, "hi")
-          : hasTargetScriptClient(e.question, targetLang);
-      return !(respMatches && qMatches);
-    });
+    const toTranslate = withCached.filter(
+      (e) =>
+        !(
+          responseMatchesLanguageClient(e.response, targetLang) &&
+          hasTargetScriptClient(e.question, targetLang)
+        )
+    );
 
     setThreads((prev) =>
       prev.map((th) =>
@@ -217,7 +232,7 @@ export default function SatyaHomePage() {
 
         const validResult =
           batchRes.translated &&
-          hasTargetScriptClient(item.response.answer_markdown, targetLang);
+          responseMatchesLanguageClient(item.response, targetLang);
 
         if (validResult) {
           nextCache[targetLang] = {
@@ -308,15 +323,48 @@ export default function SatyaHomePage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await sendChatMessage(message, sessionContext, history, language);
+      let response = await sendChatMessage(message, sessionContext, history, language);
+      let displayQuestion = message;
       const entryId = response.request_id || String(Date.now());
+      const baseLang = (response.language || "en") as SupportedLanguage;
+      const translationsCache: ConversationEntry["translations"] = responseMatchesLanguageClient(
+        response,
+        baseLang
+      )
+        ? { [baseLang]: { question: message, response } }
+        : undefined;
+
+      // Guarantee AI-generated content matches the active UI language even if initial generation returned English
+      if (!responseMatchesLanguageClient(response, language)) {
+        try {
+          const tr = await translateThread(
+            [{ id: entryId, question: message, response }],
+            language
+          );
+          const translatedItem = tr.items[0];
+          if (
+            tr.translated &&
+            translatedItem &&
+            responseMatchesLanguageClient(translatedItem.response, language)
+          ) {
+            displayQuestion = translatedItem.question || message;
+            response = translatedItem.response;
+          }
+        } catch {
+          // keep fallback response
+        }
+      }
+
       const newEntry: ConversationEntry = {
         id: entryId,
-        question: message,
+        question: displayQuestion,
         response,
-        translations: hasTargetScriptClient(response.answer_markdown, language)
-          ? { [language]: { question: message, response } }
-          : undefined,
+        translations: {
+          ...(translationsCache || {}),
+          ...(responseMatchesLanguageClient(response, language)
+            ? { [language]: { question: displayQuestion, response } }
+            : {}),
+        },
       };
       const nowIso = new Date().toISOString();
 
