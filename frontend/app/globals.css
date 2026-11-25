@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body {
+    background-color: #F7F5F0;
+    color: #1E242B;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  *:focus-visible {
+    outline: 2px solid #164E3F;
+    outline-offset: 2px;
+  }
+}
+
+.satya-prose p {
+  margin-bottom: 0.75rem;
+  line-height: 1.65;
+}
+
+.satya-prose ul {
+  list-style-type: disc;
+  padding-left: 1.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.satya-prose li {
+  margin-bottom: 0.35rem;
+  line-height: 1.6;
+}
