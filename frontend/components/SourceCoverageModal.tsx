@@ -31,7 +31,7 @@ export function SourceCoverageModal({
         className="flex max-h-[88vh] w-full max-w-4xl flex-col rounded-xl border border-border-subtle bg-surface shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-border-subtle bg-canvas px-6 py-4 rounded-t-xl">
+        <div className="flex items-center justify-between border-b border-border-subtle bg-canvas px-6 py-4 rounded-t-2xl">
           <div className="flex items-center gap-2.5">
             <Database className="h-5 w-5 text-accent" />
             <div>
@@ -46,7 +46,7 @@ export function SourceCoverageModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md border border-border-subtle bg-surface p-1.5 text-ink-muted hover:bg-surface-muted"
+            className="rounded-lg border border-border-subtle bg-surface p-1.5 text-ink-muted hover:bg-surface-muted hover:text-ink"
             aria-label="Close source coverage modal"
           >
             <X className="h-4 w-4" />

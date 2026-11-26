@@ -29,7 +29,7 @@ export function EvidenceLedger({
 
   if (!claims.length) {
     return (
-      <div className="rounded-lg border border-border-subtle bg-surface p-6 text-sm text-ink-muted">
+      <div className="rounded-xl border border-border-subtle bg-canvas/75 p-5 text-xs leading-relaxed text-ink-muted">
         {t.ledgerNoClaims}
       </div>
     );
@@ -50,12 +50,12 @@ export function EvidenceLedger({
   return (
     <div className="space-y-4">
       {evidenceCoverage && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border-subtle bg-canvas px-4 py-3 text-xs text-ink-muted">
-          <span>
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border-subtle bg-canvas px-4 py-3 text-xs text-ink-muted">
+          <span className="leading-relaxed">
             <strong className="font-semibold text-ink">{t.ledgerCoveragePrefix}</strong>{" "}
             {evidenceCoverage.description}
           </span>
-          <span className="rounded bg-surface px-2 py-0.5 font-mono text-[11px] text-ink border border-border-subtle">
+          <span className="rounded-lg border border-accent/25 bg-accent-soft px-2.5 py-0.5 font-mono text-[11px] font-semibold text-accent">
             {evidenceCoverage.supported_claims}/{evidenceCoverage.total_claims}
           </span>
         </div>
@@ -68,26 +68,26 @@ export function EvidenceLedger({
           return (
             <div
               key={claim.claim_id || idx}
-              className="rounded-lg border border-border-subtle bg-surface p-4 shadow-sm"
+              className="rounded-xl border border-border-subtle bg-canvas/60 p-4 transition-colors hover:border-sage"
             >
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  <span className="rounded bg-surface-muted px-2 py-0.5 font-mono text-[11px] font-semibold text-ink">
+                  <span className="rounded-md border border-border-subtle bg-surface px-2 py-0.5 font-mono text-[11px] font-semibold text-ink">
                     {t.ledgerClaimPrefix} {idx + 1}
                   </span>
                   {claim.evidence_status === "supported" && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-2.5 py-0.5 text-xs font-medium text-accent">
-                      <CheckCircle2 className="h-3.5 w-3.5" /> {t.ledgerSupported}
+                    <span className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-2.5 py-0.5 text-[11px] font-semibold text-accent">
+                      <CheckCircle2 className="h-3 w-3" /> {t.ledgerSupported}
                     </span>
                   )}
                   {claim.evidence_status === "partial" && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">
-                      <AlertCircle className="h-3.5 w-3.5" /> {t.ledgerPartial}
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700">
+                      <AlertCircle className="h-3 w-3" /> {t.ledgerPartial}
                     </span>
                   )}
                   {claim.evidence_status === "unsupported" && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-crimson-100 px-2.5 py-0.5 text-xs font-medium text-crimson-700">
-                      <XCircle className="h-3.5 w-3.5" /> {t.ledgerUnsupported}
+                    <span className="inline-flex items-center gap-1 rounded-full bg-crimson-100 px-2.5 py-0.5 text-[11px] font-semibold text-crimson-700">
+                      <XCircle className="h-3 w-3" /> {t.ledgerUnsupported}
                     </span>
                   )}
                 </div>
@@ -120,7 +120,7 @@ export function EvidenceLedger({
                   </div>
 
                   {primaryMeta && (
-                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-ink-muted">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-ink-muted">
                       <div>
                         <span className="font-medium text-ink">{primaryMeta.source_title}</span>
                         {" · "}
@@ -134,9 +134,9 @@ export function EvidenceLedger({
                       </div>
 
                       <div className="flex items-center gap-2">
-                        <Flag className="h-3 w-3 text-ink-muted" />
+                        <Flag className="h-3 w-3 text-sage" />
                         {flagged[primaryMeta.chunk_id] ? (
-                          <span className="text-[11px] font-medium text-accent">
+                          <span className="font-medium text-accent">
                             Feedback logged ({flagged[primaryMeta.chunk_id].replace("_", " ")})
                           </span>
                         ) : (
@@ -144,14 +144,14 @@ export function EvidenceLedger({
                             <button
                               type="button"
                               onClick={() => handleFeedback(primaryMeta.chunk_id, "wrong_citation")}
-                              className="text-[11px] hover:text-ink underline"
+                              className="hover:text-ink underline"
                             >
                               Wrong citation
                             </button>
                             <button
                               type="button"
                               onClick={() => handleFeedback(primaryMeta.chunk_id, "outdated_source")}
-                              className="text-[11px] hover:text-ink underline"
+                              className="hover:text-ink underline"
                             >
                               Outdated
                             </button>

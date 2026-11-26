@@ -2,16 +2,13 @@
 
 import React, { useEffect, useState } from "react";
 import {
-  Scale,
   Database,
   FileSearch,
   ListChecks,
-  ShieldCheck,
   PhoneCall,
   ExternalLink,
-  History,
+  Menu,
   Globe,
-  Plus,
   BookMarked,
   MessageSquare,
 } from "lucide-react";
@@ -76,6 +73,8 @@ export default function SatyaHomePage() {
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [workspaceMode, setWorkspaceMode] = useState<"chat" | "policies">("chat");
   const [activeTab, setActiveTab] = useState<"ledger" | "planner">("ledger");
+  const [mobilePanel, setMobilePanel] = useState<"chat" | "evidence">("chat");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [translating, setTranslating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -138,20 +137,23 @@ export default function SatyaHomePage() {
   const t = UI_COPY[language];
 
   const handleNewChat = () => {
+    setWorkspaceMode("chat");
     setActiveThreadId(null);
     setSelectedEntryId(null);
     setDraftSessionContext({});
+    setMobilePanel("chat");
     setError(null);
   };
 
   const handleSelectThread = async (threadId: string) => {
     const found = threads.find((th) => th.id === threadId);
     if (!found) return;
+    setWorkspaceMode("chat");
     setActiveThreadId(found.id);
     const lastEntry = found.entries[found.entries.length - 1];
     setSelectedEntryId(lastEntry ? lastEntry.id : null);
+    setMobilePanel("chat");
     setError(null);
-    // If thread entries aren't yet in current UI language, auto-refresh them
     await refreshThreadLanguage(found.id, found.entries, language);
   };
 
@@ -162,7 +164,6 @@ export default function SatyaHomePage() {
   ) => {
     if (!threadEntries.length) return;
 
-    // 1. Apply any valid cached translation immediately (only if BOTH question and response match target script)
     const withCached = threadEntries.map((e) => {
       const cached = e.translations?.[targetLang];
       if (
@@ -179,7 +180,6 @@ export default function SatyaHomePage() {
       return e;
     });
 
-    // Determine which entries still need server batch translation
     const toTranslate = withCached.filter(
       (e) =>
         !(
@@ -194,11 +194,6 @@ export default function SatyaHomePage() {
           ? {
               ...th,
               language: targetLang,
-              title: withCached[0]?.question
-                ? withCached[0].question.length > 56
-                  ? `${withCached[0].question.slice(0, 56).trim()}…`
-                  : withCached[0].question
-                : th.title,
               entries: withCached,
             }
           : th
@@ -255,11 +250,6 @@ export default function SatyaHomePage() {
             ? {
                 ...th,
                 language: targetLang,
-                title: updatedEntries[0]?.question
-                  ? updatedEntries[0].question.length > 56
-                    ? `${updatedEntries[0].question.slice(0, 56).trim()}…`
-                    : updatedEntries[0].question
-                  : th.title,
                 entries: updatedEntries,
               }
             : th
@@ -287,6 +277,12 @@ export default function SatyaHomePage() {
     if (activeThread) {
       await refreshThreadLanguage(activeThread.id, activeThread.entries, newLang);
     }
+  };
+
+  const handleRenameThread = (threadId: string, newTitle: string) => {
+    setThreads((prev) =>
+      prev.map((th) => (th.id === threadId ? { ...th, title: newTitle } : th))
+    );
   };
 
   const handleDeleteThread = (threadId: string) => {
@@ -334,7 +330,6 @@ export default function SatyaHomePage() {
         ? { [baseLang]: { question: message, response } }
         : undefined;
 
-      // Guarantee AI-generated content matches the active UI language even if initial generation returned English
       if (!responseMatchesLanguageClient(response, language)) {
         try {
           const tr = await translateThread(
@@ -381,13 +376,14 @@ export default function SatyaHomePage() {
                 }
               : th
           );
-          // Move active thread to top of history
           return updated.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
         });
       } else {
         const newThreadId = `thread_${Date.now()}`;
         const title =
-          message.length > 56 ? `${message.slice(0, 56).trim()}…` : message;
+          displayQuestion.length > 56
+            ? `${displayQuestion.slice(0, 56).trim()}…`
+            : displayQuestion;
         const created: ChatThread = {
           id: newThreadId,
           title,
@@ -433,277 +429,311 @@ export default function SatyaHomePage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-canvas text-ink">
-      {/* Top Navigation & Single-Domain Header */}
-      <header className="sticky top-0 z-30 border-b border-border-subtle bg-surface/95 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setHistoryDrawerOpen(true)}
-              className="lg:hidden rounded-md border border-border-subtle bg-canvas p-2 text-ink hover:bg-surface-muted"
-              aria-label={t.historyTitle}
-            >
-              <History className="h-4 w-4" />
-            </button>
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-white shadow-sm">
-              <Scale className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="font-serif text-lg sm:text-xl font-bold tracking-tight text-ink">
-                  {t.brandName}
-                </h1>
-                <span className="inline-flex items-center gap-1 rounded-full border border-accent/25 bg-accent-soft px-2.5 py-0.5 text-[11px] font-semibold text-accent">
-                  <ShieldCheck className="h-3 w-3" />
-                  {t.domainBadge}
-                </span>
+    <div className="min-h-screen lg:h-screen flex bg-canvas text-ink lg:overflow-hidden">
+      {/* Left Collapsible Chat History Sidebar */}
+      <HistorySidebar
+        threads={threads}
+        activeThreadId={activeThreadId}
+        language={language}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
+        mobileOpen={historyDrawerOpen}
+        onCloseMobile={() => setHistoryDrawerOpen(false)}
+        onSelectThread={handleSelectThread}
+        onNewChat={handleNewChat}
+        onRenameThread={handleRenameThread}
+        onDeleteThread={handleDeleteThread}
+        onClearAll={handleClearAllHistory}
+        onOpenSources={() => setCoverageOpen(true)}
+        approvedSourceCount={coverage ? coverage.approved_source_count : "13"}
+      />
+
+      {/* Right Main Column (Header + Workspace + Footer) */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* Top Bar (fixed single-row layout across all languages) */}
+        <header className="sticky top-0 z-30 relative border-b border-border-subtle bg-surface/95 backdrop-blur-sm">
+          <div className="flex h-14 items-center justify-between gap-2 px-3 sm:px-5">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => setHistoryDrawerOpen(true)}
+                className="lg:hidden shrink-0 rounded-lg border border-border-subtle bg-canvas p-2 text-ink transition-colors hover:bg-surface-muted"
+                aria-label={t.historyTitle}
+              >
+                <Menu className="h-4 w-4" />
+              </button>
+
+              {/* Workspace Mode Switcher (fixed button widths prevent horizontal shift on language change) */}
+              <div className="inline-flex shrink-0 items-center rounded-xl border border-border-subtle bg-canvas p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setWorkspaceMode("chat")}
+                  className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-lg px-2.5 sm:px-3 sm:w-[126px] whitespace-nowrap text-xs font-semibold leading-normal transition-colors ${
+                    workspaceMode === "chat"
+                      ? "bg-accent text-canvas shadow-sm"
+                      : "text-ink-muted hover:text-ink"
+                  }`}
+                >
+                  <MessageSquare className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{t.navAskSatya}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWorkspaceMode("policies")}
+                  className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-lg px-2.5 sm:px-3 sm:w-[162px] whitespace-nowrap text-xs font-semibold leading-normal transition-colors ${
+                    workspaceMode === "policies"
+                      ? "bg-accent text-canvas shadow-sm"
+                      : "text-ink-muted hover:text-ink"
+                  }`}
+                >
+                  <BookMarked className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{t.navLawsPolicies}</span>
+                </button>
               </div>
-              <p className="text-xs text-ink-muted">{t.tagline}</p>
-            </div>
-          </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Workspace Mode Switcher: Ask Satya vs Consumer Laws & Policies Explorer */}
-            <div className="inline-flex items-center rounded-lg border border-border-subtle bg-canvas p-0.5">
+              {/* Subtle Animated Ready / Grounding Status Indicator */}
               <button
                 type="button"
-                onClick={() => setWorkspaceMode("chat")}
-                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-semibold transition-colors ${
-                  workspaceMode === "chat"
-                    ? "bg-navy text-white shadow-sm"
-                    : "text-ink-muted hover:text-ink"
-                }`}
+                onClick={() => setCoverageOpen(true)}
+                className="hidden xl:inline-flex h-8 w-[142px] shrink-0 items-center justify-center gap-2 rounded-full border border-border-subtle bg-canvas px-3 whitespace-nowrap text-[11px] font-medium leading-normal text-ink-muted transition-colors hover:border-accent/40 hover:text-ink"
+                title={`${t.satyaReadyLabel} · ${t.officialSourcesBtn}`}
               >
-                <MessageSquare className="h-3.5 w-3.5" />
-                <span>{t.navAskSatya}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setWorkspaceMode("policies")}
-                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-semibold transition-colors ${
-                  workspaceMode === "policies"
-                    ? "bg-navy text-white shadow-sm"
-                    : "text-ink-muted hover:text-ink"
-                }`}
-              >
-                <BookMarked className="h-3.5 w-3.5" />
-                <span>{t.navLawsPolicies}</span>
-              </button>
-            </div>
-
-            {/* Multi-lingual Switcher: English / Kannada / Hindi */}
-            <div
-              className="inline-flex items-center rounded-lg border border-border-subtle bg-canvas p-0.5"
-              role="group"
-              aria-label="Language selector"
-            >
-              <Globe className="ml-2 mr-1 h-3.5 w-3.5 text-ink-muted hidden sm:block" />
-              {LANGUAGE_OPTIONS.map((opt) => {
-                const active = language === opt.code;
-                return (
-                  <button
-                    key={opt.code}
-                    type="button"
-                    onClick={() => handleLanguageChange(opt.code)}
-                    className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                      active
-                        ? "bg-accent text-white shadow-sm"
-                        : "text-ink-muted hover:text-ink"
-                    }`}
-                  >
-                    {opt.nativeLabel}
-                  </button>
-                );
-              })}
-            </div>
-
-            {translating && (
-              <span className="text-[11px] font-medium text-accent animate-pulse">
-                {language === "kn"
-                  ? "ಕನ್ನಡಕ್ಕೆ ಬದಲಾಯಿಸಲಾಗುತ್ತಿದೆ..."
-                  : language === "hi"
-                  ? "हिन्दी में बदला जा रहा है..."
-                  : "Refreshing in English..."}
-              </span>
-            )}
-
-            <button
-              type="button"
-              onClick={handleNewChat}
-              className="inline-flex items-center gap-1 rounded-md border border-border-subtle bg-canvas px-2.5 py-1.5 text-xs font-medium text-ink hover:bg-surface-muted lg:hidden"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              <span>{t.newChatBtn}</span>
-            </button>
-
-            <a
-              href="https://consumerhelpline.gov.in/public/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hidden xl:inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-canvas px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-muted"
-            >
-              <PhoneCall className="h-3.5 w-3.5 text-accent" />
-              <span>NCH 1915</span>
-              <ExternalLink className="h-3 w-3 text-ink-muted" />
-            </a>
-            <a
-              href="https://e-jagriti.gov.in/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hidden xl:inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-canvas px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-muted"
-            >
-              <span>e-Jagriti</span>
-              <ExternalLink className="h-3 w-3 text-ink-muted" />
-            </a>
-            <button
-              type="button"
-              onClick={() => setCoverageOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-md border border-accent/30 bg-accent-soft px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent hover:text-white transition-colors"
-            >
-              <Database className="h-3.5 w-3.5" />
-              <span>
-                {t.officialSourcesBtn} ({coverage ? coverage.approved_source_count : "13"})
-              </span>
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Legal-Tech Workspace: Chat Mode OR Laws & Policies Explorer */}
-      <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 py-5 sm:px-6">
-        {workspaceMode === "policies" ? (
-          <PolicyExplorer
-            language={language}
-            onOpenPassage={(cit) => setViewerCitation(cit)}
-          />
-        ) : (
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-12 items-start">
-          {/* Left Column: Persistent Chat History Section */}
-          <HistorySidebar
-            threads={threads}
-            activeThreadId={activeThreadId}
-            language={language}
-            mobileOpen={historyDrawerOpen}
-            onCloseMobile={() => setHistoryDrawerOpen(false)}
-            onSelectThread={handleSelectThread}
-            onNewChat={handleNewChat}
-            onDeleteThread={handleDeleteThread}
-            onClearAll={handleClearAllHistory}
-          />
-
-          {/* Center Column: Continuous Consumer Chat & Follow-ups */}
-          <section className="lg:col-span-5" aria-label="Consumer Rights Consultation">
-            <ChatPanel
-              entries={entries}
-              selectedEntryId={selectedEntry?.id || null}
-              sessionContext={currentSessionContext}
-              language={language}
-              onChangeSessionContext={handleChangeSessionContext}
-              onSelectEntry={setSelectedEntryId}
-              onSend={handleSend}
-              loading={loading}
-              error={error}
-              onOpenPassage={handleOpenPassage}
-            />
-          </section>
-
-          {/* Right Column: Evidence Ledger & Action Planner */}
-          <aside
-            className="lg:col-span-4 lg:sticky lg:top-20 rounded-xl border border-border-subtle bg-surface shadow-sm overflow-hidden"
-            aria-label="Evidence Ledger and Action Planner"
-          >
-            <div className="flex border-b border-border-subtle bg-canvas">
-              <button
-                type="button"
-                onClick={() => setActiveTab("ledger")}
-                className={`flex flex-1 items-center justify-center gap-2 px-4 py-3 text-xs font-semibold transition-colors border-b-2 ${
-                  activeTab === "ledger"
-                    ? "border-accent bg-surface text-accent"
-                    : "border-transparent text-ink-muted hover:text-ink"
-                }`}
-              >
-                <FileSearch className="h-4 w-4" />
-                <span>
-                  {t.tabLedger}
-                  {selectedEntry ? ` (${selectedEntry.response.claims.length})` : ""}
+                <span className="relative flex h-2 w-2 shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sage opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-accent" />
                 </span>
+                <span className="truncate">{t.satyaReadyLabel}</span>
               </button>
+            </div>
+
+            <div className="flex shrink-0 items-center gap-2">
+              {/* Multi-lingual Switcher */}
+              <div
+                className="inline-flex shrink-0 items-center rounded-xl border border-border-subtle bg-canvas p-0.5"
+                role="group"
+                aria-label="Language selector"
+              >
+                <Globe className="ml-2 mr-1 h-3.5 w-3.5 shrink-0 text-sage hidden sm:block" />
+                {LANGUAGE_OPTIONS.map((opt) => {
+                  const active = language === opt.code;
+                  return (
+                    <button
+                      key={opt.code}
+                      type="button"
+                      onClick={() => handleLanguageChange(opt.code)}
+                      className={`inline-flex h-7 items-center justify-center rounded-lg px-2.5 whitespace-nowrap text-xs font-medium leading-normal transition-colors ${
+                        active
+                          ? "bg-accent text-canvas shadow-sm"
+                          : "text-ink-muted hover:text-ink"
+                      }`}
+                    >
+                      {opt.nativeLabel}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <a
+                href="https://consumerhelpline.gov.in/public/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hidden 2xl:inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border-subtle bg-canvas px-2.5 whitespace-nowrap text-xs font-medium text-ink transition-colors hover:border-sage hover:bg-surface-muted"
+              >
+                <PhoneCall className="h-3.5 w-3.5 text-accent" />
+                <span>NCH 1915</span>
+                <ExternalLink className="h-3 w-3 text-ink-muted" />
+              </a>
+              <a
+                href="https://e-jagriti.gov.in/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hidden 2xl:inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border-subtle bg-canvas px-2.5 whitespace-nowrap text-xs font-medium text-ink transition-colors hover:border-sage hover:bg-surface-muted"
+              >
+                <span>e-Jagriti</span>
+                <ExternalLink className="h-3 w-3 text-ink-muted" />
+              </a>
               <button
                 type="button"
-                onClick={() => setActiveTab("planner")}
-                className={`flex flex-1 items-center justify-center gap-2 px-4 py-3 text-xs font-semibold transition-colors border-b-2 ${
-                  activeTab === "planner"
-                    ? "border-accent bg-surface text-accent"
-                    : "border-transparent text-ink-muted hover:text-ink"
-                }`}
+                onClick={() => setCoverageOpen(true)}
+                className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-accent/30 bg-accent-soft px-2.5 sm:px-3 sm:w-[162px] whitespace-nowrap text-xs font-semibold leading-normal text-accent transition-colors hover:bg-accent hover:text-canvas"
               >
-                <ListChecks className="h-4 w-4" />
-                <span>
-                  {t.tabPlanner}
-                  {selectedEntry && selectedEntry.response.action_plan.length > 0
-                    ? ` (${selectedEntry.response.action_plan.length})`
-                    : ""}
+                <Database className="h-3.5 w-3.5 shrink-0" />
+                <span className="hidden sm:inline truncate">{t.officialSourcesBtn}</span>
+                <span className="font-mono text-[11px] shrink-0">
+                  ({coverage ? coverage.approved_source_count : "13"})
                 </span>
               </button>
             </div>
+          </div>
 
-            <div className="max-h-[calc(100vh-11rem)] overflow-y-auto p-5">
-              {!selectedEntry ? (
-                <div className="space-y-4 text-xs text-ink-muted">
-                  <p className="font-serif text-sm font-medium text-ink">
-                    {activeTab === "ledger"
-                      ? t.emptyRightTitleLedger
-                      : t.emptyRightTitlePlanner}
-                  </p>
-                  <p className="leading-relaxed">
-                    {activeTab === "ledger"
-                      ? t.emptyRightDescLedger
-                      : t.emptyRightDescPlanner}
-                  </p>
-                  <div className="rounded-lg border border-border-subtle bg-canvas p-4 space-y-1.5">
-                    <div className="font-semibold text-ink">{t.promiseHeading}</div>
-                    <p>{t.promiseQuote}</p>
-                  </div>
+          {/* Non-shifting translation indicator bar & floating pill */}
+          {translating && (
+            <>
+              <div className="absolute inset-x-0 bottom-0 h-0.5 overflow-hidden bg-accent-soft">
+                <div className="h-full w-1/2 bg-accent animate-pulse" />
+              </div>
+              <div className="pointer-events-none absolute left-1/2 top-full z-40 mt-2 -translate-x-1/2">
+                <div className="rounded-full border border-accent/30 bg-surface px-3.5 py-1 text-[11px] font-semibold text-accent shadow-soft whitespace-nowrap animate-satya-in">
+                  {language === "kn"
+                    ? "ಕನ್ನಡಕ್ಕೆ ಬದಲಾಯಿಸಲಾಗುತ್ತಿದೆ..."
+                    : language === "hi"
+                    ? "हिन्दी में बदला जा रहा है..."
+                    : "Refreshing in English..."}
                 </div>
-              ) : activeTab === "ledger" ? (
-                <EvidenceLedger
-                  requestId={selectedEntry.response.request_id}
-                  claims={selectedEntry.response.claims}
-                  citationDetails={selectedEntry.response.citation_details}
-                  evidenceCoverage={selectedEntry.response.evidence_coverage}
+              </div>
+            </>
+          )}
+
+          {/* Tablet/Mobile Panel Switcher when viewing an active conversation */}
+          {workspaceMode === "chat" && entries.length > 0 && (
+            <div className="flex xl:hidden border-t border-border-subtle bg-canvas/70 px-4 py-1.5 gap-2">
+              <button
+                type="button"
+                onClick={() => setMobilePanel("chat")}
+                className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition-colors ${
+                  mobilePanel === "chat"
+                    ? "bg-accent text-canvas shadow-sm"
+                    : "text-ink-muted hover:text-ink"
+                }`}
+              >
+                {t.mobileChatTab} ({entries.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setMobilePanel("evidence")}
+                className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition-colors ${
+                  mobilePanel === "evidence"
+                    ? "bg-accent text-canvas shadow-sm"
+                    : "text-ink-muted hover:text-ink"
+                }`}
+              >
+                {t.mobileEvidenceTab}
+                {selectedEntry ? ` (${selectedEntry.response.claims.length})` : ""}
+              </button>
+            </div>
+          )}
+        </header>
+
+        {/* Main Workspace Body */}
+        <main className="flex-1 min-h-0 flex flex-col lg:overflow-hidden">
+          {workspaceMode === "policies" ? (
+            <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+              <div className="mx-auto max-w-5xl">
+                <PolicyExplorer
                   language={language}
-                  onOpenPassage={(cid) =>
-                    handleOpenPassage(cid, selectedEntry.response.citation_details)
-                  }
+                  onOpenPassage={(cit) => setViewerCitation(cit)}
                 />
-              ) : (
-                <ActionPlanner
-                  actionPlan={selectedEntry.response.action_plan}
-                  citationDetails={selectedEntry.response.citation_details}
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 min-h-0 flex flex-col xl:flex-row">
+              {/* Primary Chat Interface */}
+              <section
+                className={`flex-1 min-w-0 overflow-y-auto px-4 py-5 sm:px-6 ${
+                  entries.length > 0 && mobilePanel === "evidence"
+                    ? "hidden xl:block"
+                    : "block"
+                }`}
+                aria-label="Consumer Rights Consultation"
+              >
+                <ChatPanel
+                  entries={entries}
+                  selectedEntryId={selectedEntry?.id || null}
+                  sessionContext={currentSessionContext}
                   language={language}
-                  onOpenPassage={(cid) =>
-                    handleOpenPassage(cid, selectedEntry.response.citation_details)
-                  }
-                  userQuestion={selectedEntry.question}
+                  onChangeSessionContext={handleChangeSessionContext}
+                  onSelectEntry={setSelectedEntryId}
+                  onSend={handleSend}
+                  onNewChat={handleNewChat}
+                  loading={loading}
+                  error={error}
+                  onOpenPassage={handleOpenPassage}
                 />
+              </section>
+
+              {/* Right Evidence Ledger & Action Planner (shown cleanly once conversation begins) */}
+              {entries.length > 0 && selectedEntry && (
+                <aside
+                  className={`xl:w-[400px] 2xl:w-[430px] shrink-0 border-t xl:border-t-0 xl:border-l border-border-subtle bg-surface flex flex-col min-h-0 ${
+                    mobilePanel === "evidence" ? "flex-1 flex" : "hidden xl:flex"
+                  }`}
+                  aria-label="Evidence Ledger and Action Planner"
+                >
+                  <div className="flex border-b border-border-subtle bg-canvas/80">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("ledger")}
+                      className={`flex flex-1 items-center justify-center gap-2 px-4 py-3 text-xs font-semibold transition-colors border-b-2 ${
+                        activeTab === "ledger"
+                          ? "border-accent bg-surface text-accent"
+                          : "border-transparent text-ink-muted hover:text-ink"
+                      }`}
+                    >
+                      <FileSearch className="h-4 w-4" />
+                      <span>
+                        {t.tabLedger} ({selectedEntry.response.claims.length})
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("planner")}
+                      className={`flex flex-1 items-center justify-center gap-2 px-4 py-3 text-xs font-semibold transition-colors border-b-2 ${
+                        activeTab === "planner"
+                          ? "border-accent bg-surface text-accent"
+                          : "border-transparent text-ink-muted hover:text-ink"
+                      }`}
+                    >
+                      <ListChecks className="h-4 w-4" />
+                      <span>
+                        {t.tabPlanner}
+                        {selectedEntry.response.action_plan.length > 0
+                          ? ` (${selectedEntry.response.action_plan.length})`
+                          : ""}
+                      </span>
+                    </button>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-4 sm:p-5">
+                    {activeTab === "ledger" ? (
+                      <EvidenceLedger
+                        requestId={selectedEntry.response.request_id}
+                        claims={selectedEntry.response.claims}
+                        citationDetails={selectedEntry.response.citation_details}
+                        evidenceCoverage={selectedEntry.response.evidence_coverage}
+                        language={language}
+                        onOpenPassage={(cid) =>
+                          handleOpenPassage(cid, selectedEntry.response.citation_details)
+                        }
+                      />
+                    ) : (
+                      <ActionPlanner
+                        actionPlan={selectedEntry.response.action_plan}
+                        citationDetails={selectedEntry.response.citation_details}
+                        language={language}
+                        onOpenPassage={(cid) =>
+                          handleOpenPassage(cid, selectedEntry.response.citation_details)
+                        }
+                        userQuestion={selectedEntry.question}
+                      />
+                    )}
+                  </div>
+                </aside>
               )}
             </div>
-          </aside>
-        </div>
-        )}
-      </main>
+          )}
+        </main>
 
-      {/* Footer Disclaimer */}
-      <footer className="border-t border-border-subtle bg-surface px-4 py-4 text-xs text-ink-muted sm:px-6">
-        <div className="mx-auto flex max-w-[1440px] flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-          <p>
-            <strong className="font-semibold text-ink">{t.disclaimerLabel}</strong>{" "}
-            {t.disclaimerBody}
-          </p>
-          <p className="shrink-0">{t.privacyFooterNote}</p>
-        </div>
-      </footer>
+        {/* Subtle Trust & Legal Disclaimer Footer */}
+        <footer className="border-t border-border-subtle bg-surface/90 px-4 py-2.5 text-[11px] text-ink-muted sm:px-6">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <p>
+              <strong className="font-semibold text-ink">{t.disclaimerLabel}</strong>{" "}
+              {t.disclaimerBody}
+            </p>
+            <p className="shrink-0">{t.privacyFooterNote}</p>
+          </div>
+        </footer>
+      </div>
 
       {/* Exact Passage Source Viewer Drawer */}
       <SourceViewer

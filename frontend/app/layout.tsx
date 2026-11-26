@@ -15,9 +15,9 @@ const sourceSerif = Source_Serif_4({
 });
 
 export const metadata: Metadata = {
-  title: "Satya — Indian Consumer Rights & Protection",
+  title: "Satya — Trustworthy AI for Indian Consumer Rights & Protection",
   description:
-    "Know your consumer rights. See the law. Take the next step. Source-grounded AI for Indian Consumer Rights & Protection.",
+    "Know your consumer rights. Understand the law. Find the right steps. Source-grounded AI for Indian Consumer Rights & Protection.",
 };
 
 export default function RootLayout({
@@ -27,7 +27,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${inter.variable} ${sourceSerif.variable}`}>
-      <body className="min-h-screen bg-canvas text-ink font-sans antialiased">
+      <body className="min-h-screen bg-canvas text-ink font-sans antialiased selection:bg-accent/15 selection:text-accent">
         {children}
       </body>
     </html>

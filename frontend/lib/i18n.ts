@@ -2,13 +2,25 @@ import { ActionPlanKind, AnswerStatus, SupportedLanguage } from "./types";
 
 export interface UIStrings {
   brandName: string;
+  brandSubtitle: string;
   tagline: string;
   domainBadge: string;
+  satyaReadyLabel: string;
   officialSourcesBtn: string;
   newChatBtn: string;
+  clearChatBtn: string;
   historyTitle: string;
   historyEmpty: string;
   clearHistoryBtn: string;
+  groupToday: string;
+  groupYesterday: string;
+  groupPrevious: string;
+  renameAction: string;
+  deleteAction: string;
+  saveAction: string;
+  cancelAction: string;
+  collapseSidebar: string;
+  expandSidebar: string;
   turnsLabel: string;
   askTitle: string;
   followupHint: string;
@@ -26,15 +38,24 @@ export interface UIStrings {
   placeholderFollowup: string;
   askButton: string;
   verifyingButton: string;
+  retrievingNotice: string;
+  copyResponseBtn: string;
+  copiedResponseBtn: string;
+  aiExplanationLabel: string;
+  officialEvidenceLabel: string;
   examplesLabel: string;
+  welcomeBadge: string;
   emptyHeroTitle: string;
   emptyHeroDesc: string;
+  welcomeGroundingNote: string;
   verifiedCitationsLabel: string;
   officialPortalsLabel: string;
   inspectingNote: string;
   clickToInspectNote: string;
   tabLedger: string;
   tabPlanner: string;
+  mobileChatTab: string;
+  mobileEvidenceTab: string;
   emptyRightTitleLedger: string;
   emptyRightTitlePlanner: string;
   emptyRightDescLedger: string;
@@ -78,7 +99,7 @@ export interface UIStrings {
   policyMatchedProvisions: string;
   policyNoMatch: string;
   policyTopics: { label: string; query: string }[];
-  samplePrompts: { label: string; prompt: string }[];
+  samplePrompts: { label: string; description: string; prompt: string }[];
   followupSuggestions: { label: string; prompt: string }[];
 }
 
@@ -91,19 +112,31 @@ export const LANGUAGE_OPTIONS: { code: SupportedLanguage; nativeLabel: string; s
 export const UI_COPY: Record<SupportedLanguage, UIStrings> = {
   en: {
     brandName: "Satya",
+    brandSubtitle: "Consumer Rights AI",
     tagline: "Know your consumer rights. See the law. Take the next step.",
     domainBadge: "Indian Consumer Rights & Protection",
+    satyaReadyLabel: "Satya Ready",
     officialSourcesBtn: "Official Sources",
     newChatBtn: "New Chat",
-    historyTitle: "Chat History",
-    historyEmpty: "No saved conversations yet. Your questions and verified answers will appear here.",
+    clearChatBtn: "Clear chat",
+    historyTitle: "Conversations",
+    historyEmpty: "No saved conversations yet. Your consumer queries and verified legal briefs will appear here.",
     clearHistoryBtn: "Clear all",
+    groupToday: "Today",
+    groupYesterday: "Yesterday",
+    groupPrevious: "Previous conversations",
+    renameAction: "Rename",
+    deleteAction: "Delete",
+    saveAction: "Save",
+    cancelAction: "Cancel",
+    collapseSidebar: "Collapse sidebar",
+    expandSidebar: "Expand sidebar",
     turnsLabel: "turns",
-    askTitle: "Ask about Indian Consumer Rights & Protection",
-    followupHint: "Continuous chat active — ask follow-up questions with full context",
-    factsBtn: "Optional transaction facts",
-    factsActiveBtn: "Transaction facts active",
-    factsPrivacyNote: "Non-sensitive Session Facts (never share OTPs, Aadhaar, or card numbers)",
+    askTitle: "Describe your consumer issue",
+    followupHint: "Continuous conversation — ask follow-up questions with full case context",
+    factsBtn: "Transaction facts",
+    factsActiveBtn: "Facts added",
+    factsPrivacyNote: "Optional Non-Sensitive Details (never enter OTPs, Aadhaar, or card numbers)",
     clearFactsBtn: "Clear facts",
     statePlaceholder: "State (e.g. Karnataka)",
     channelAny: "Channel (any)",
@@ -111,23 +144,30 @@ export const UI_COPY: Record<SupportedLanguage, UIStrings> = {
     channelRetail: "In-store Retail",
     channelService: "Service Provider",
     amountPlaceholder: "Amount paid (₹)",
-    placeholderMain:
-      "Describe your consumer issue or ask about the Consumer Protection Act, 2019, E-Commerce Rules, Jurisdiction, NCH (1915), or e-Jagriti...",
+    placeholderMain: "Describe your consumer issue...",
     placeholderFollowup:
-      "Ask a follow-up question (e.g., 'What if they don't reply in 48 hours?' or 'Which Consumer Commission applies?')...",
-    askButton: "Ask Satya",
+      "Ask a follow-up question (e.g., 'What if they do not reply within 48 hours?')...",
+    askButton: "Send",
     verifyingButton: "Verifying...",
-    examplesLabel: "Example consumer scenarios & verification tests",
-    emptyHeroTitle:
-      "Every material legal claim backed by an inspectable Government of India source passage.",
-    emptyHeroDesc:
-      "Select an example above or ask your own Indian consumer-protection question. You can ask follow-up questions continuously, switch between English, ಕನ್ನಡ, and हिन्दी, and revisit past chats anytime.",
-    verifiedCitationsLabel: "Verified Citations:",
-    officialPortalsLabel: "Official portals & texts:",
-    inspectingNote: "Inspecting Evidence Ledger & Action Plan on right →",
-    clickToInspectNote: "Click to inspect Evidence Ledger & Action Plan",
+    retrievingNotice: "Retrieving and verifying official Indian consumer protection laws...",
+    copyResponseBtn: "Copy response",
+    copiedResponseBtn: "Copied",
+    aiExplanationLabel: "AI Grounded Explanation",
+    officialEvidenceLabel: "Supporting Official Legal Evidence",
+    examplesLabel: "Common consumer situations — select one to begin",
+    welcomeBadge: "Official Indian Consumer Protection AI",
+    emptyHeroTitle: "Know your consumer rights.",
+    emptyHeroDesc: "Understand the law. Find the right steps. Make informed decisions.",
+    welcomeGroundingNote:
+      "Satya provides source-grounded information exclusively from official Indian consumer protection laws, rules, CCPA guidelines, and government portals. When evidence is missing or out of scope, Satya abstains rather than guessing.",
+    verifiedCitationsLabel: "Inspectable Statutory Citations",
+    officialPortalsLabel: "Official Portals & Texts:",
+    inspectingNote: "Inspecting Evidence Ledger & Action Plan →",
+    clickToInspectNote: "Select to view full Evidence Ledger & Action Plan",
     tabLedger: "Evidence Ledger",
     tabPlanner: "Action Planner",
+    mobileChatTab: "Consultation",
+    mobileEvidenceTab: "Evidence & Plan",
     emptyRightTitleLedger: "Claim-by-Claim Evidence Verification",
     emptyRightTitlePlanner: "Consumer Action Planner & Readiness",
     emptyRightDescLedger:
@@ -139,14 +179,14 @@ export const UI_COPY: Record<SupportedLanguage, UIStrings> = {
       "“Satya does not measure success by how many questions it answers. It measures success by how many answers it can prove.”",
     disclaimerLabel: "Disclaimer:",
     disclaimerBody:
-      "Satya provides source-grounded legal information strictly for Indian Consumer Rights & Protection. It is not formal legal advice, representation, or a guarantee of refund, replacement, or compensation.",
+      "Satya provides source-grounded legal information strictly for Indian Consumer Rights & Protection. It is not formal legal advice, representation, or a guarantee of outcome.",
     privacyFooterNote: "Use synthetic scenarios · Never share OTPs, passwords, or Aadhaar/card details.",
     statusLabels: {
       verified: "Verified from Official Sources",
       partially_verified: "Partially Verified",
-      cannot_verify: "Cannot Verify",
-      needs_clarification: "Needs Clarification",
-      out_of_scope: "Out of Scope",
+      cannot_verify: "Why Satya Won't Answer",
+      needs_clarification: "Clarification Needed",
+      out_of_scope: "Outside Scope",
     },
     actionKinds: {
       legal_requirement: "Law / Statutory Provision",
@@ -161,12 +201,12 @@ export const UI_COPY: Record<SupportedLanguage, UIStrings> = {
     ledgerSupported: "Supported",
     ledgerPartial: "Partial",
     ledgerUnsupported: "Unsupported",
-    openExactPassage: "Open exact passage",
-    sourceViewerHeading: "Exact Source Passage",
+    openExactPassage: "Inspect passage",
+    sourceViewerHeading: "Exact Official Source Passage",
     exactLocatorLabel: "Exact Locator",
     sourceCurrencyLabel: "Source Currency & Approval",
     approvedOfficialBadge: "Approved Official Source",
-    verbatimTextLabel: "Verbatim Extracted Text",
+    verbatimTextLabel: "Verbatim Extracted Statutory Text",
     sourceViewerEnglishNote:
       "Displayed verbatim from the official Government of India Gazette / portal text.",
     openOfficialGovSource: "Open Official Government Source",
@@ -180,7 +220,7 @@ export const UI_COPY: Record<SupportedLanguage, UIStrings> = {
       "Self-check of information commonly needed before approaching NCH (1915) or filing via e-Jagriti. Does not determine legal validity or outcome.",
     draftToggleShow: "Prepare neutral complaint summary draft (for your review)",
     draftToggleHide: "Hide neutral complaint summary draft",
-    navAskSatya: "Ask Satya (Chat)",
+    navAskSatya: "Consultation",
     navLawsPolicies: "Laws & Policies",
     policySearchTitle: "Consumer Laws, Rules & Policies Explorer",
     policySearchSubtitle:
@@ -203,37 +243,38 @@ export const UI_COPY: Record<SupportedLanguage, UIStrings> = {
     ],
     samplePrompts: [
       {
-        label: "Damaged phone bought online",
-        prompt: "I bought a phone online and it arrived with a damaged screen. What can I do?",
+        label: "My online order was never delivered.",
+        description: "Check e-commerce duties, grievance timelines, and escalation paths.",
+        prompt: "My online order was never delivered even after payment. What are my consumer rights and grievance steps?",
       },
       {
-        label: "E-commerce not responding",
-        prompt:
-          "An e-commerce platform has not responded to my complaint. What does the rule say about grievance handling?",
+        label: "I received a defective product.",
+        description: "Explore repair, replacement, and refund provisions under CPA 2019.",
+        prompt: "I received a defective product. What remedies are available under Indian consumer law?",
       },
       {
-        label: "₹35 lakh claim jurisdiction",
+        label: "A company is refusing my refund.",
+        description: "Review marketplace obligations and unfair trade practice rules.",
+        prompt: "A company is refusing my refund for a faulty item. What does consumer protection law say?",
+      },
+      {
+        label: "I am facing an issue with an e-commerce platform.",
+        description: "See Grievance Officer 48-hour acknowledgement & 1-month redressal duties.",
+        prompt: "I am facing an issue with an e-commerce platform that is not resolving my complaint. What are their legal duties?",
+      },
+      {
+        label: "I want to report misleading advertisements.",
+        description: "Inspect CCPA Misleading Ads Guidelines, 2022 & endorsement rules.",
+        prompt: "I want to report misleading advertisements. What rules and remedies apply under CCPA guidelines?",
+      },
+      {
+        label: "Which Consumer Commission handles a ₹35 lakh claim?",
+        description: "Check District, State, and National pecuniary jurisdiction tiers.",
         prompt: "Which Consumer Commission should I approach for a claim involving ₹35 lakh?",
-      },
-      {
-        label: "NCH vs Consumer Commission",
-        prompt: "What is the difference between the National Consumer Helpline and a Consumer Commission?",
-      },
-      {
-        label: "Define deficiency in service",
-        prompt: "Show me the exact section that defines deficiency in service.",
-      },
-      {
-        label: "Test abstention (unsupported)",
-        prompt: "Tell me what Section 999 of the Consumer Protection Act says about instant payouts.",
-      },
-      {
-        label: "Test scope gate (out of scope)",
-        prompt: "How do I apply for an Indian passport renewal?",
       },
     ],
     followupSuggestions: [
-      { label: "What is the time limit to file?", prompt: "How long do I have to file a consumer complaint?" },
+      { label: "Time limit to file?", prompt: "How long do I have to file a consumer complaint?" },
       { label: "What if they don't reply?", prompt: "What if the seller or platform does not respond?" },
       { label: "Is mediation available?", prompt: "Can this dispute be resolved through mediation?" },
     ],
@@ -241,18 +282,30 @@ export const UI_COPY: Record<SupportedLanguage, UIStrings> = {
 
   kn: {
     brandName: "ಸತ್ಯ (Satya)",
+    brandSubtitle: "ಗ್ರಾಹಕ ಹಕ್ಕುಗಳ AI",
     tagline: "ನಿಮ್ಮ ಗ್ರಾಹಕ ಹಕ್ಕುಗಳನ್ನು ತಿಳಿಯಿರಿ. ಕಾನೂನನ್ನು ನೋಡಿ. ಮುಂದಿನ ಹೆಜ್ಜೆ ಇಡಿ.",
     domainBadge: "ಭಾರತೀಯ ಗ್ರಾಹಕ ಹಕ್ಕುಗಳು ಮತ್ತು ರಕ್ಷಣೆ",
+    satyaReadyLabel: "ಸತ್ಯ ಸಿದ್ಧವಾಗಿದೆ",
     officialSourcesBtn: "ಅಧಿಕೃತ ಮೂಲಗಳು",
     newChatBtn: "ಹೊಸ ಚಾಟ್",
-    historyTitle: "ಚಾಟ್ ಇತಿಹಾಸ",
+    clearChatBtn: "ಚಾಟ್ ತೆರವುಗೊಳಿಸಿ",
+    historyTitle: "ಸಂಭಾಷಣೆಗಳು",
     historyEmpty: "ಇನ್ನೂ ಯಾವುದೇ ಉಳಿಸಿದ ಸಂಭಾಷಣೆಗಳಿಲ್ಲ. ನಿಮ್ಮ ಪ್ರಶ್ನೆಗಳು ಮತ್ತು ಉತ್ತರಗಳು ಇಲ್ಲಿ ಕಾಣಿಸುತ್ತವೆ.",
     clearHistoryBtn: "ಎಲ್ಲಾ ಅಳಿಸಿ",
+    groupToday: "ಇಂದು",
+    groupYesterday: "ನಿನ್ನೆ",
+    groupPrevious: "ಹಿಂದಿನ ಸಂಭಾಷಣೆಗಳು",
+    renameAction: "ಹೆಸರು ಬದಲಿಸಿ",
+    deleteAction: "ಅಳಿಸಿ",
+    saveAction: "ಉಳಿಸಿ",
+    cancelAction: "ರದ್ದುಮಾಡಿ",
+    collapseSidebar: "ಸೈಡ್‌ಬಾರ್ ಕುಗ್ಗಿಸಿ",
+    expandSidebar: "ಸೈಡ್‌ಬಾರ್ ವಿಸ್ತರಿಸಿ",
     turnsLabel: "ಸಂದೇಶಗಳು",
-    askTitle: "ಭಾರತೀಯ ಗ್ರಾಹಕ ಹಕ್ಕುಗಳು ಮತ್ತು ರಕ್ಷಣೆಯ ಬಗ್ಗೆ ಕೇಳಿ",
+    askTitle: "ನಿಮ್ಮ ಗ್ರಾಹಕ ಸಮಸ್ಯೆಯನ್ನು ವಿವರಿಸಿ",
     followupHint: "ನಿರಂತರ ಚಾಟ್ ಸಕ್ರಿಯವಾಗಿದೆ — ಹಿಂದಿನ ಸಂದರ್ಭದೊಂದಿಗೆ ಮುಂದುವರಿದ ಪ್ರಶ್ನೆಗಳನ್ನು ಕೇಳಿ",
-    factsBtn: "ಐಚ್ಛಿಕ ವಹಿವಾಟು ವಿವರಗಳು",
-    factsActiveBtn: "ವಹಿವಾಟು ವಿವರಗಳು ಸಕ್ರಿಯವಾಗಿವೆ",
+    factsBtn: "ವಹಿವಾಟು ವಿವರಗಳು",
+    factsActiveBtn: "ವಿವರಗಳು ಸಕ್ರಿಯ",
     factsPrivacyNote: "ಸೂಕ್ಷ್ಮವಲ್ಲದ ವಿವರಗಳು (OTP, ಆಧಾರ್, ಅಥವಾ ಕಾರ್ಡ್ ಸಂಖ್ಯೆಗಳನ್ನು ಎಂದಿಗೂ ಹಂಚಿಕೊಳ್ಳಬೇಡಿ)",
     clearFactsBtn: "ವಿವರ ಅಳಿಸಿ",
     statePlaceholder: "ರಾಜ್ಯ (ಉದಾ. ಕರ್ನಾಟಕ)",
@@ -261,23 +314,30 @@ export const UI_COPY: Record<SupportedLanguage, UIStrings> = {
     channelRetail: "ಅಂಗಡಿ ಖರೀದಿ",
     channelService: "ಸೇವಾ ಪೂರೈಕೆದಾರ",
     amountPlaceholder: "ಪಾವತಿಸಿದ ಮೊತ್ತ (₹)",
-    placeholderMain:
-      "ನಿಮ್ಮ ಗ್ರಾಹಕ ಸಮಸ್ಯೆಯನ್ನು ವಿವರಿಸಿ ಅಥವಾ ಗ್ರಾಹಕ ರಕ್ಷಣಾ ಕಾಯ್ದೆ 2019, ಇ-ಕಾಮರ್ಸ್ ನಿಯಮಗಳು, NCH (1915), ಅಥವಾ e-Jagriti ಬಗ್ಗೆ ಕೇಳಿ...",
+    placeholderMain: "ನಿಮ್ಮ ಗ್ರಾಹಕ ಸಮಸ್ಯೆಯನ್ನು ವಿವರಿಸಿ...",
     placeholderFollowup:
-      "ಮುಂದುವರಿದ ಪ್ರಶ್ನೆ ಕೇಳಿ (ಉದಾ., '48 ಗಂಟೆಗಳಲ್ಲಿ ಪ್ರತಿಕ್ರಿಯಿಸದಿದ್ದರೆ ಏನು ಮಾಡಬೇಕು?' ಅಥವಾ 'ಯಾವ ಗ್ರಾಹಕ ಆಯೋಗಕ್ಕೆ ಹೋಗಬೇಕು?')...",
-    askButton: "ಸತ್ಯವನ್ನು ಕೇಳಿ",
+      "ಮುಂದುವರಿದ ಪ್ರಶ್ನೆ ಕೇಳಿ (ಉದಾ., '48 ಗಂಟೆಗಳಲ್ಲಿ ಪ್ರತಿಕ್ರಿಯಿಸದಿದ್ದರೆ ಏನು ಮಾಡಬೇಕು?')...",
+    askButton: "ಕಳುಹಿಸಿ",
     verifyingButton: "ಪರಿಶೀಲಿಸಲಾಗುತ್ತಿದೆ...",
-    examplesLabel: "ಉದಾಹರಣೆ ಗ್ರಾಹಕ ಪ್ರಶ್ನೆಗಳು ಮತ್ತು ಪರಿಶೀಲನಾ ಪರೀಕ್ಷೆಗಳು",
-    emptyHeroTitle:
-      "ಪ್ರತಿಯೊಂದು ಕಾನೂನುಬದ್ಧ ಮಾಹಿತಿಯೂ ಭಾರತ ಸರ್ಕಾರದ ಅಧಿಕೃತ ಮೂಲ ಪಠ್ಯದಿಂದ ಆಧಾರಿತವಾಗಿದೆ.",
-    emptyHeroDesc:
-      "ಮೇಲಿನ ಉದಾಹರಣೆಯನ್ನು ಆಯ್ಕೆಮಾಡಿ ಅಥವಾ ಕನ್ನಡ, ಇಂಗ್ಲಿಷ್ ಅಥವಾ ಹಿಂದಿಯಲ್ಲಿ ಪ್ರಶ್ನೆ ಕೇಳಿ. ನೀವು ನಿರಂತರವಾಗಿ ಮುಂದುವರಿದ ಪ್ರಶ್ನೆಗಳನ್ನು ಕೇಳಬಹುದು ಮತ್ತು ಚಾಟ್ ಇತಿಹಾಸಕ್ಕೆ ಹಿಂತಿರುಗಬಹುದು.",
-    verifiedCitationsLabel: "ದೃಢೀಕೃತ ಉಲ್ಲೇಖಗಳು:",
+    retrievingNotice: "ಭಾರತೀಯ ಗ್ರಾಹಕ ರಕ್ಷಣಾ ಕಾನೂನುಗಳನ್ನು ಪರಿಶೀಲಿಸಲಾಗುತ್ತಿದೆ...",
+    copyResponseBtn: "ಉತ್ತರ ನಕಲಿಸಿ",
+    copiedResponseBtn: "ನಕಲಿಸಲಾಗಿದೆ",
+    aiExplanationLabel: "AI ಆಧಾರಿತ ವಿವರಣೆ",
+    officialEvidenceLabel: "ಅಧಿಕೃತ ಕಾನೂನು ಸಾಕ್ಷ್ಯಗಳು",
+    examplesLabel: "ಸಾಮಾನ್ಯ ಗ್ರಾಹಕ ಸಮಸ್ಯೆಗಳು — ಪ್ರಾರಂಭಿಸಲು ಒಂದನ್ನು ಆಯ್ಕೆಮಾಡಿ",
+    welcomeBadge: "ಭಾರತೀಯ ಗ್ರಾಹಕ ರಕ್ಷಣಾ ಕಾನೂನು AI",
+    emptyHeroTitle: "ನಿಮ್ಮ ಗ್ರಾಹಕ ಹಕ್ಕುಗಳನ್ನು ತಿಳಿಯಿರಿ.",
+    emptyHeroDesc: "ಕಾನೂನನ್ನು ಅರ್ಥಮಾಡಿಕೊಳ್ಳಿ. ಸರಿಯಾದ ಹಂತಗಳನ್ನು ಕಂಡುಕೊಳ್ಳಿ. ತಿಳುವಳಿಕೆಯುಳ್ಳ ನಿರ್ಧಾರಗಳನ್ನು ತೆಗೆದುಕೊಳ್ಳಿ.",
+    welcomeGroundingNote:
+      "ಸತ್ಯವು ಭಾರತ ಸರ್ಕಾರದ ಅಧಿಕೃತ ಗ್ರಾಹಕ ರಕ್ಷಣಾ ಕಾಯ್ದೆಗಳು, ನಿಯಮಗಳು, CCPA ಮಾರ್ಗಸೂಚಿಗಳು ಮತ್ತು ಸರ್ಕಾರಿ ಪೋರ್ಟಲ್‌ಗಳ ಆಧಾರದ ಮೇಲೆ ಮಾಹಿತಿಯನ್ನು ನೀಡುತ್ತದೆ. ಸಾಕ್ಷ್ಯವಿಲ್ಲದಿದ್ದಾಗ ಅಥವಾ ವ್ಯಾಪ್ತಿಯ ಹೊರಗಿದ್ದಾಗ ಅದು ಊಹಿಸದೆ ಸ್ಪಷ್ಟವಾಗಿ ತಿಳಿಸುತ್ತದೆ.",
+    verifiedCitationsLabel: "ದೃಢೀಕೃತ ಶಾಸನಬದ್ಧ ಉಲ್ಲೇಖಗಳು",
     officialPortalsLabel: "ಅಧಿಕೃತ ಪೋರ್ಟಲ್‌ಗಳು ಮತ್ತು ದಾಖಲೆಗಳು:",
-    inspectingNote: "ಬಲಭಾಗದಲ್ಲಿ ಸಾಕ್ಷ್ಯ ಲೆಡ್ಜರ್ ಮತ್ತು ಕ್ರಿಯಾ ಯೋಜನೆಯನ್ನು ನೋಡಲಾಗುತ್ತಿದೆ →",
-    clickToInspectNote: "ಸಾಕ್ಷ್ಯ ಲೆಡ್ಜರ್ ಮತ್ತು ಕ್ರಿಯಾ ಯೋಜನೆ ನೋಡಲು ಕ್ಲಿಕ್ ಮಾಡಿ",
+    inspectingNote: "ಸಾಕ್ಷ್ಯ ಲೆಡ್ಜರ್ ಮತ್ತು ಕ್ರಿಯಾ ಯೋಜನೆಯನ್ನು ನೋಡಲಾಗುತ್ತಿದೆ →",
+    clickToInspectNote: "ಪೂರ್ಣ ಸಾಕ್ಷ್ಯ ಲೆಡ್ಜರ್ ಮತ್ತು ಕ್ರಿಯಾ ಯೋಜನೆ ನೋಡಲು ಆಯ್ಕೆಮಾಡಿ",
     tabLedger: "ಸಾಕ್ಷ್ಯ ಲೆಡ್ಜರ್",
     tabPlanner: "ಕ್ರಿಯಾ ಯೋಜನೆ",
+    mobileChatTab: "ಸಮಾಲೋಚನೆ",
+    mobileEvidenceTab: "ಸಾಕ್ಷ್ಯ ಮತ್ತು ಯೋಜನೆ",
     emptyRightTitleLedger: "ಹಕ್ಕು-ವಾರು ಸಾಕ್ಷ್ಯ ಪರಿಶೀಲನೆ",
     emptyRightTitlePlanner: "ಗ್ರಾಹಕ ಕ್ರಿಯಾ ಯೋಜನೆ ಮತ್ತು ಸಿದ್ಧತೆ",
     emptyRightDescLedger:
@@ -294,7 +354,7 @@ export const UI_COPY: Record<SupportedLanguage, UIStrings> = {
     statusLabels: {
       verified: "ಅಧಿಕೃತ ಮೂಲಗಳಿಂದ ದೃಢೀಕರಿಸಲಾಗಿದೆ",
       partially_verified: "ಭಾಗಶಃ ದೃಢೀಕರಿಸಲಾಗಿದೆ",
-      cannot_verify: "ದೃಢೀಕರಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ",
+      cannot_verify: "ಸತ್ಯ ಏಕೆ ಉತ್ತರಿಸುವುದಿಲ್ಲ",
       needs_clarification: "ಸ್ಪಷ್ಟೀಕರಣದ ಅಗತ್ಯವಿದೆ",
       out_of_scope: "ವ್ಯಾಪ್ತಿಯ ಹೊರಗಿದೆ",
     },
@@ -310,8 +370,8 @@ export const UI_COPY: Record<SupportedLanguage, UIStrings> = {
     ledgerSupported: "ಬೆಂಬಲಿತ",
     ledgerPartial: "ಭಾಗಶಃ",
     ledgerUnsupported: "ಬೆಂಬಲವಿಲ್ಲ",
-    openExactPassage: "ನಿಖರ ಪಠ್ಯ ತೆರೆಯಿರಿ",
-    sourceViewerHeading: "ನಿಖರವಾದ ಮೂಲ ಪಠ್ಯ",
+    openExactPassage: "ಪಠ್ಯ ನೋಡಿ",
+    sourceViewerHeading: "ನಿಖರವಾದ ಅಧಿಕೃತ ಮೂಲ ಪಠ್ಯ",
     exactLocatorLabel: "ನಿಖರ ಸ್ಥಳ",
     sourceCurrencyLabel: "ಮೂಲದ ಸಿಂಧುತ್ವ ಮತ್ತು ಅನುಮೋದನೆ",
     approvedOfficialBadge: "ಅನುಮೋದಿತ ಅಧಿಕೃತ ಮೂಲ",
@@ -329,8 +389,8 @@ export const UI_COPY: Record<SupportedLanguage, UIStrings> = {
       "NCH (1915) ಅಥವಾ e-Jagriti ಮೂಲಕ ದೂರು ಸಲ್ಲಿಸುವ ಮೊದಲು ಸಾಮಾನ್ಯವಾಗಿ ಬೇಕಾಗುವ ದಾಖಲೆಗಳ ಸ್ವಯಂ-ಪರಿಶೀಲನೆ.",
     draftToggleShow: "ತಟಸ್ಥ ದೂರು ಸಾರಾಂಶದ ಕರಡು ಸಿದ್ಧಪಡಿಸಿ",
     draftToggleHide: "ದೂರು ಸಾರಾಂಶ ಕರಡು ಮರೆಮಾಡಿ",
-    navAskSatya: "ಸತ್ಯವನ್ನು ಕೇಳಿ (ಚಾಟ್)",
-    navLawsPolicies: "ಕಾಯ್ದೆಗಳು ಮತ್ತು ನೀತಿಗಳು",
+    navAskSatya: "ಸಮಾಲೋಚನೆ",
+    navLawsPolicies: "ಕಾಯ್ದೆಗಳು ಮತ್ತು ನೀತಿ",
     policySearchTitle: "ಗ್ರಾಹಕ ಕಾಯ್ದೆಗಳು, ನಿಯಮಗಳು ಮತ್ತು ನೀತಿಗಳ ಶೋಧಕ",
     policySearchSubtitle:
       "ಭಾರತೀಯ ಗ್ರಾಹಕ ಹಕ್ಕುಗಳು ಮತ್ತು ರಕ್ಷಣೆಗೆ ಸಂಬಂಧಿಸಿದ ಯಾವುದೇ ವಿಷಯವನ್ನು ಹುಡುಕಿ, ಸಂಬಂಧಿತ ಕಾಯ್ದೆಗಳು, ನಿಯಮಗಳು ಮತ್ತು CCPA ಮಾರ್ಗಸೂಚಿಗಳನ್ನು ನೋಡಿ.",
@@ -352,28 +412,34 @@ export const UI_COPY: Record<SupportedLanguage, UIStrings> = {
     ],
     samplePrompts: [
       {
-        label: "ಆನ್‌ಲೈನ್‌ನಲ್ಲಿ ಹಾನಿಗೊಳಗಾದ ಫೋನ್",
-        prompt: "ನಾನು ಆನ್‌ಲೈನ್‌ನಲ್ಲಿ ಫೋನ್ ಖರೀದಿಸಿದೆ ಮತ್ತು ಅದು ಹಾನಿಗೊಳಗಾದ ಪರದೆಯೊಂದಿಗೆ ಬಂದಿದೆ. ನಾನು ಏನು ಮಾಡಬಹುದು?",
+        label: "ನನ್ನ ಆನ್‌ಲೈನ್ ಆರ್ಡರ್ ತಲುಪಿಲ್ಲ.",
+        description: "ಇ-ಕಾಮರ್ಸ್ ಕರ್ತವ್ಯಗಳು ಮತ್ತು ದೂರು ಪರಿಹಾರ ಹಂತಗಳನ್ನು ಪರಿಶೀಲಿಸಿ.",
+        prompt: "ನಾನು ಪಾವತಿ ಮಾಡಿದರೂ ನನ್ನ ಆನ್‌ಲೈನ್ ಆರ್ಡರ್ ಇನ್ನೂ ತಲುಪಿಲ್ಲ. ನನ್ನ ಗ್ರಾಹಕ ಹಕ್ಕುಗಳು ಮತ್ತು ದೂರು ಹಂತಗಳು ಏನು?",
       },
       {
-        label: "ಇ-ಕಾಮರ್ಸ್ ಪ್ರತಿಕ್ರಿಯಿಸದಿದ್ದರೆ",
+        label: "ನನಗೆ ದೋಷಪೂರಿತ ಉತ್ಪನ್ನ ಸಿಕ್ಕಿದೆ.",
+        description: "CPA 2019 ಅಡಿಯಲ್ಲಿ ದುರಸ್ತಿ, ಬದಲಾವಣೆ ಮತ್ತು ಮರುಪಾವತಿ ನಿಯಮಗಳನ್ನು ನೋಡಿ.",
+        prompt: "ನನಗೆ ದೋಷಪೂರಿತ ಉತ್ಪನ್ನ ಸಿಕ್ಕಿದೆ. ಭಾರತೀಯ ಗ್ರಾಹಕ ಕಾನೂನಿನಡಿ ಯಾವ ಪರಿಹಾರಗಳು ಲಭ್ಯವಿವೆ?",
+      },
+      {
+        label: "ಕಂಪನಿಯು ನನ್ನ ಹಣ ಮರುಪಾವತಿ ಮಾಡಲು ನಿರಾಕರಿಸುತ್ತಿದೆ.",
+        description: "ಅನ್ಯಾಯದ ವ್ಯಾಪಾರ ಪದ್ಧತಿ ಮತ್ತು ಮರುಪಾವತಿ ನಿಯಮಗಳನ್ನು ಪರಿಶೀಲಿಸಿ.",
+        prompt: "ದೋಷಪೂರಿತ ವಸ್ತುವಿಗೆ ಕಂಪನಿಯು ನನ್ನ ಹಣವನ್ನು ಮರುಪಾವತಿ ಮಾಡಲು ನಿರಾಕರಿಸುತ್ತಿದೆ. ಗ್ರಾಹಕ ರಕ್ಷಣಾ ಕಾನೂನು ಏನು ಹೇಳುತ್ತದೆ?",
+      },
+      {
+        label: "ಇ-ಕಾಮರ್ಸ್ ವೇದಿಕೆಯಲ್ಲಿ ನನಗೆ ಸಮಸ್ಯೆಯಾಗಿದೆ.",
+        description: "ಕುಂದುಕೊರತೆ ಅಧಿಕಾರಿಯ 48 ಗಂಟೆ ಮತ್ತು 1 ತಿಂಗಳ ಕಾಲಮಿತಿ ನೋಡಿ.",
         prompt: "ಇ-ಕಾಮರ್ಸ್ ವೇದಿಕೆ ನನ್ನ ದೂರಿಗೆ ಪ್ರತಿಕ್ರಿಯಿಸಿಲ್ಲ. ಕುಂದುಕೊರತೆ ಪರಿಹಾರದ ನಿಯಮ ಏನು ಹೇಳುತ್ತದೆ?",
       },
       {
-        label: "₹35 ಲಕ್ಷ ದಾವೆ — ಯಾವ ಆಯೋಗ?",
+        label: "ತಪ್ಪುದಾರಿಗೆಳೆಯುವ ಜಾಹೀರಾತುಗಳ ಬಗ್ಗೆ ದೂರು ನೀಡಬೇಕು.",
+        description: "CCPA ಜಾಹೀರಾತು ಮಾರ್ಗಸೂಚಿಗಳು, 2022 ಅನ್ನು ಪರಿಶೀಲಿಸಿ.",
+        prompt: "ತಪ್ಪುದಾರಿಗೆಳೆಯುವ ಜಾಹೀರಾತುಗಳ ಬಗ್ಗೆ ದೂರು ನೀಡಲು CCPA ಮಾರ್ಗಸೂಚಿಗಳು ಮತ್ತು ನಿಯಮಗಳು ಏನು ಹೇಳುತ್ತವೆ?",
+      },
+      {
+        label: "₹35 ಲಕ್ಷ ದಾವೆ — ಯಾವ ಗ್ರಾಹಕ ಆಯೋಗ?",
+        description: "ಜಿಲ್ಲಾ, ರಾಜ್ಯ ಮತ್ತು ರಾಷ್ಟ್ರೀಯ ಆಯೋಗದ ನ್ಯಾಯವ್ಯಾಪ್ತಿ ನೋಡಿ.",
         prompt: "₹35 ಲಕ್ಷ ಮೊತ್ತದ ದೂರಿಗೆ ನಾನು ಯಾವ ಗ್ರಾಹಕ ಆಯೋಗವನ್ನು ಸಂಪರ್ಕಿಸಬೇಕು?",
-      },
-      {
-        label: "NCH ಮತ್ತು ಗ್ರಾಹಕ ಆಯೋಗದ ವ್ಯತ್ಯಾಸ",
-        prompt: "ರಾಷ್ಟ್ರೀಯ ಗ್ರಾಹಕ ಸಹಾಯವಾಣಿ (NCH) ಮತ್ತು ಗ್ರಾಹಕ ಆಯೋಗದ ನಡುವಿನ ವ್ಯತ್ಯಾಸವೇನು?",
-      },
-      {
-        label: "ಸೇವೆಯಲ್ಲಿ ಕೊರತೆ ವ್ಯಾಖ್ಯಾನ",
-        prompt: "ಸೇವೆಯಲ್ಲಿ ಕೊರತೆ (deficiency in service) ವ್ಯಾಖ್ಯಾನಿಸುವ ನಿಖರವಾದ ಸೆಕ್ಷನ್ ತೋರಿಸಿ.",
-      },
-      {
-        label: "ವ್ಯಾಪ್ತಿ ಹೊರಗಿನ ಪರೀಕ್ಷೆ (ಪಾಸ್‌ಪೋರ್ಟ್)",
-        prompt: "ಭಾರತೀಯ ಪಾಸ್‌ಪೋರ್ಟ್ ನವೀಕರಣಕ್ಕೆ ಹೇಗೆ ಅರ್ಜಿ ಸಲ್ಲಿಸಬೇಕು?",
       },
     ],
     followupSuggestions: [
@@ -385,19 +451,31 @@ export const UI_COPY: Record<SupportedLanguage, UIStrings> = {
 
   hi: {
     brandName: "सत्य (Satya)",
+    brandSubtitle: "उपभोक्ता अधिकार AI",
     tagline: "अपने उपभोक्ता अधिकार जानें। कानून देखें। अगला कदम उठाएं।",
     domainBadge: "भारतीय उपभोक्ता अधिकार एवं संरक्षण",
+    satyaReadyLabel: "सत्य तैयार है",
     officialSourcesBtn: "आधिकारिक स्रोत",
     newChatBtn: "नई चैट",
-    historyTitle: "चैट इतिहास",
+    clearChatBtn: "चैट साफ़ करें",
+    historyTitle: "बातचीत इतिहास",
     historyEmpty: "अभी तक कोई सहेजी गई बातचीत नहीं है। आपके प्रश्न और प्रमाणित उत्तर यहाँ दिखेंगे।",
     clearHistoryBtn: "सभी हटाएं",
+    groupToday: "आज",
+    groupYesterday: "कल",
+    groupPrevious: "पिछली बातचीत",
+    renameAction: "नाम बदलें",
+    deleteAction: "हटाएं",
+    saveAction: "सहेजें",
+    cancelAction: "रद्द करें",
+    collapseSidebar: "साइडबार समेटें",
+    expandSidebar: "साइडबार खोलें",
     turnsLabel: "संदेश",
-    askTitle: "भारतीय उपभोक्ता अधिकार और संरक्षण के बारे में पूछें",
+    askTitle: "अपनी उपभोक्ता समस्या बताएं",
     followupHint: "निरंतर चैट सक्रिय है — पिछले संदर्भ के साथ आगे के प्रश्न पूछें",
-    factsBtn: "वैकल्पिक लेन-देन विवरण",
-    factsActiveBtn: "लेन-देन विवरण सक्रिय हैं",
-    factsPrivacyNote: "गैर-संवेदनशील तथ्य (OTP, आधार या पूरा कार्ड नंबर कभी न डालें)",
+    factsBtn: "लेन-देन विवरण",
+    factsActiveBtn: "विवरण सक्रिय",
+    factsPrivacyNote: "वैकल्पिक गैर-संवेदनशील तथ्य (OTP, आधार या कार्ड नंबर कभी न डालें)",
     clearFactsBtn: "विवरण हटाएं",
     statePlaceholder: "राज्य (जैसे कर्नाटक)",
     channelAny: "माध्यम (कोई भी)",
@@ -405,23 +483,30 @@ export const UI_COPY: Record<SupportedLanguage, UIStrings> = {
     channelRetail: "दुकान से खरीद",
     channelService: "सेवा प्रदाता",
     amountPlaceholder: "भुगतान राशि (₹)",
-    placeholderMain:
-      "अपनी उपभोक्ता समस्या बताएं या उपभोक्ता संरक्षण अधिनियम 2019, ई-कॉमर्स नियम, NCH (1915), या e-Jagriti के बारे में पूछें...",
+    placeholderMain: "अपनी उपभोक्ता समस्या बताएं...",
     placeholderFollowup:
-      "आगे का प्रश्न पूछें (जैसे '48 घंटे में जवाब न मिले तो क्या करें?' या 'किस आयोग में शिकायत दर्ज करें?')...",
-    askButton: "सत्य से पूछें",
+      "आगे का प्रश्न पूछें (जैसे '48 घंटे में जवाब न मिले तो क्या करें?')...",
+    askButton: "भेजें",
     verifyingButton: "सत्यापित हो रहा है...",
-    examplesLabel: "उदाहरण उपभोक्ता प्रश्न एवं सत्यापन परीक्षण",
-    emptyHeroTitle:
-      "हर कानूनी दावा भारत सरकार के प्रमाणित आधिकारिक स्रोत अंश द्वारा समर्थित है।",
-    emptyHeroDesc:
-      "ऊपर से कोई उदाहरण चुनें या हिन्दी, कन्नड़ या अंग्रेज़ी में अपना प्रश्न पूछें। आप लगातार फॉलो-अप सवाल पूछ सकते हैं और पुरानी चैट पर वापस जा सकते हैं।",
-    verifiedCitationsLabel: "प्रमाणित उद्धरण:",
+    retrievingNotice: "भारतीय उपभोक्ता संरक्षण कानूनों की जांच और सत्यापन हो रहा है...",
+    copyResponseBtn: "उत्तर कॉपी करें",
+    copiedResponseBtn: "कॉपी हो गया",
+    aiExplanationLabel: "AI आधारित व्याख्या",
+    officialEvidenceLabel: "सहायक आधिकारिक कानूनी साक्ष्य",
+    examplesLabel: "सामान्य उपभोक्ता समस्याएं — शुरू करने के लिए चुनें",
+    welcomeBadge: "आधिकारिक भारतीय उपभोक्ता संरक्षण AI",
+    emptyHeroTitle: "अपने उपभोक्ता अधिकार जानें।",
+    emptyHeroDesc: "कानून को समझें। सही कदम जानें। सोच-समझकर निर्णय लें।",
+    welcomeGroundingNote:
+      "सत्य केवल भारत सरकार के आधिकारिक उपभोक्ता संरक्षण कानूनों, नियमों, CCPA दिशानिर्देशों और सरकारी पोर्टलों पर आधारित जानकारी देता है। पर्याप्त प्रमाण न होने या दायरे से बाहर होने पर यह अनुमान लगाने के बजाय स्पष्ट रूप से मना करता है।",
+    verifiedCitationsLabel: "प्रमाणित वैधानिक उद्धरण",
     officialPortalsLabel: "आधिकारिक पोर्टल और दस्तावेज़:",
-    inspectingNote: "दाईं ओर साक्ष्य बही (Evidence Ledger) और कार्य योजना देख रहे हैं →",
-    clickToInspectNote: "साक्ष्य बही और कार्य योजना देखने के लिए क्लिक करें",
+    inspectingNote: "साक्ष्य बही और कार्य योजना देख रहे हैं →",
+    clickToInspectNote: "पूरी साक्ष्य बही और कार्य योजना देखने के लिए चुनें",
     tabLedger: "साक्ष्य बही",
     tabPlanner: "कार्य योजना",
+    mobileChatTab: "परामर्श",
+    mobileEvidenceTab: "साक्ष्य और योजना",
     emptyRightTitleLedger: "दावा-दर-दावा साक्ष्य सत्यापन",
     emptyRightTitlePlanner: "उपभोक्ता कार्य योजना एवं तैयारी",
     emptyRightDescLedger:
@@ -438,7 +523,7 @@ export const UI_COPY: Record<SupportedLanguage, UIStrings> = {
     statusLabels: {
       verified: "आधिकारिक स्रोतों से प्रमाणित",
       partially_verified: "आंशिक रूप से प्रमाणित",
-      cannot_verify: "पुष्टि नहीं हो सकी",
+      cannot_verify: "सत्य उत्तर क्यों नहीं दे सकता",
       needs_clarification: "स्पष्टीकरण आवश्यक है",
       out_of_scope: "कार्यक्षेत्र से बाहर",
     },
@@ -454,7 +539,7 @@ export const UI_COPY: Record<SupportedLanguage, UIStrings> = {
     ledgerSupported: "समर्थित",
     ledgerPartial: "आंशिक",
     ledgerUnsupported: "असमर्थित",
-    openExactPassage: "सटीक अंश खोलें",
+    openExactPassage: "अंश देखें",
     sourceViewerHeading: "सटीक आधिकारिक स्रोत अंश",
     exactLocatorLabel: "सटीक स्थान",
     sourceCurrencyLabel: "स्रोत की वैधता एवं अनुमोदन",
@@ -473,7 +558,7 @@ export const UI_COPY: Record<SupportedLanguage, UIStrings> = {
       "NCH (1915) या e-Jagriti पर शिकायत से पहले आवश्यक सामान्य जानकारी की स्व-जांच।",
     draftToggleShow: "तटस्थ शिकायत सारांश ड्राफ्ट तैयार करें (समीक्षा हेतु)",
     draftToggleHide: "शिकायत सारांश ड्राफ्ट छिपाएं",
-    navAskSatya: "सत्य से पूछें (चैट)",
+    navAskSatya: "परामर्श",
     navLawsPolicies: "कानून और नीतियां",
     policySearchTitle: "उपभोक्ता कानून, नियम एवं नीतियां खोजें",
     policySearchSubtitle:
@@ -496,28 +581,34 @@ export const UI_COPY: Record<SupportedLanguage, UIStrings> = {
     ],
     samplePrompts: [
       {
-        label: "ऑनलाइन खरीदा टूटा फोन",
-        prompt: "मैंने ऑनलाइन फोन खरीदा था और उसकी स्क्रीन टूटी हुई आई है। मैं क्या कर सकता हूँ?",
+        label: "मेरा ऑनलाइन ऑर्डर डिलीवर नहीं हुआ।",
+        description: "ई-कॉमर्स नियमों, शिकायत समय-सीमा और निवारण प्रक्रिया देखें।",
+        prompt: "भुगतान के बाद भी मेरा ऑनलाइन ऑर्डर डिलीवर नहीं हुआ। मेरे उपभोक्ता अधिकार और शिकायत के कदम क्या हैं?",
       },
       {
-        label: "ई-कॉमर्स जवाब न दे तो",
-        prompt: "एक ई-कॉमर्स प्लेटफॉर्म ने मेरी शिकायत का जवाब नहीं दिया है। शिकायत निवारण का नियम क्या कहता है?",
+        label: "मुझे दोषपूर्ण उत्पाद मिला है।",
+        description: "उपभोक्ता संरक्षण अधिनियम 2019 के तहत मरम्मत, बदलाव और रिफंड नियम देखें।",
+        prompt: "मुझे दोषपूर्ण उत्पाद मिला है। भारतीय उपभोक्ता कानून के तहत क्या उपचार उपलब्ध हैं?",
       },
       {
-        label: "₹35 लाख दावा — कौन सा आयोग?",
+        label: "कंपनी मेरा रिफंड देने से मना कर रही है।",
+        description: "ई-कॉमर्स दायित्व और अनुचित व्यापार प्रथा के नियम देखें।",
+        prompt: "दोषपूर्ण उत्पाद के लिए कंपनी मेरा रिफंड देने से मना कर रही है। उपभोक्ता संरक्षण कानून क्या कहता है?",
+      },
+      {
+        label: "मुझे ई-कॉमर्स प्लेटफॉर्म से समस्या आ रही है।",
+        description: "शिकायत अधिकारी की 48 घंटे और 1 महीने की समय-सीमा देखें।",
+        prompt: "एक ई-कॉमर्स प्लेटफॉर्म मेरी शिकायत का समाधान नहीं कर रहा है। शिकायत निवारण के क्या नियम हैं?",
+      },
+      {
+        label: "मैं भ्रामक विज्ञापनों की रिपोर्ट करना चाहता हूँ।",
+        description: "CCPA भ्रामक विज्ञापन दिशानिर्देश, 2022 देखें।",
+        prompt: "मैं भ्रामक विज्ञापनों की शिकायत करना चाहता हूँ। CCPA दिशानिर्देशों के तहत क्या नियम और उपाय लागू होते हैं?",
+      },
+      {
+        label: "₹35 लाख के दावे के लिए कौन सा उपभोक्ता आयोग?",
+        description: "जिला, राज्य और राष्ट्रीय आयोग के आर्थिक क्षेत्राधिकार देखें।",
         prompt: "₹35 लाख से जुड़े दावे के लिए मुझे किस उपभोक्ता आयोग में जाना चाहिए?",
-      },
-      {
-        label: "NCH बनाम उपभोक्ता आयोग",
-        prompt: "राष्ट्रीय उपभोक्ता हेल्पलाइन (NCH) और उपभोक्ता आयोग में क्या अंतर है?",
-      },
-      {
-        label: "सेवा में कमी की परिभाषा",
-        prompt: "सेवा में कमी (deficiency in service) को परिभाषित करने वाली सटीक धारा दिखाएं।",
-      },
-      {
-        label: "दायरे से बाहर जांच (पासपोर्ट)",
-        prompt: "भारतीय पासपोर्ट नवीनीकरण के लिए आवेदन कैसे करें?",
       },
     ],
     followupSuggestions: [

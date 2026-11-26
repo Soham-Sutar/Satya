@@ -42,9 +42,12 @@ export function CitationChip({ chunkId, meta, onOpen }: CitationChipProps) {
   return (
     <button
       type="button"
-      onClick={() => onOpen(chunkId)}
-      className="inline-flex items-center gap-1.5 rounded-md border border-accent/25 bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent transition-colors hover:border-accent hover:bg-accent hover:text-white"
-      title={`Open exact passage: ${meta?.heading || chunkId}`}
+      onClick={(e) => {
+        e.stopPropagation();
+        onOpen(chunkId);
+      }}
+      className="inline-flex items-center gap-1.5 rounded-md border border-accent/25 bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent transition-all duration-150 hover:border-accent hover:bg-accent hover:text-canvas active:scale-[0.98]"
+      title={`Inspect official passage: ${meta?.heading || chunkId}`}
     >
       <BookOpen className="h-3 w-3 shrink-0" />
       <span>{formatShortLocator(chunkId, meta)}</span>

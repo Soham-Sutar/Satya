@@ -122,7 +122,7 @@ export function PolicyExplorer({ language, onOpenPassage }: PolicyExplorerProps)
           <button
             type="submit"
             disabled={loading}
-            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-accent px-5 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-accent px-5 py-2.5 text-xs font-semibold text-canvas transition-colors hover:bg-accent-hover disabled:opacity-50"
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
             <span>{t.policySearchBtn}</span>

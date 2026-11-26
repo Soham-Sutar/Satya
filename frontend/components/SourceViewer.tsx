@@ -134,7 +134,7 @@ export function SourceViewer({ citation, language = "en", onClose }: SourceViewe
             href={citation.official_url}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-accent px-3.5 py-2 text-xs font-medium text-white transition-colors hover:bg-accent-hover"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-accent px-3.5 py-2 text-xs font-medium text-canvas transition-colors hover:bg-accent-hover"
           >
             <span>{t.openOfficialGovSource}</span>
             <ExternalLink className="h-3.5 w-3.5" />

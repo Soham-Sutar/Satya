@@ -67,45 +67,51 @@ export function AbstentionCard({
     : c.cannotVerifyTitle;
 
   const borderClass = isClarification
-    ? "border-navy/30 bg-navy-soft/45"
+    ? "border-accent/30 bg-accent-soft/60"
     : isOutOfScope
-    ? "border-border-subtle bg-surface-muted/70"
-    : "border-crimson-700/30 bg-crimson-100/50";
+    ? "border-border-subtle bg-surface-muted/65"
+    : "border-crimson-700/30 bg-crimson-100/75";
 
   const icon = isClarification ? (
-    <HelpCircle className="h-5 w-5 text-navy shrink-0" />
+    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+      <HelpCircle className="h-4.5 w-4.5" />
+    </div>
   ) : isOutOfScope ? (
-    <Ban className="h-5 w-5 text-ink-muted shrink-0" />
+    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-beige/60 text-ink">
+      <Ban className="h-4.5 w-4.5" />
+    </div>
   ) : (
-    <ShieldAlert className="h-5 w-5 text-crimson-700 shrink-0" />
+    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-crimson-700/10 text-crimson-700">
+      <ShieldAlert className="h-4.5 w-4.5" />
+    </div>
   );
 
   return (
-    <div className={`rounded-lg border p-5 ${borderClass}`}>
+    <div className={`rounded-xl border p-4.5 p-4 ${borderClass}`}>
       <div className="flex items-start gap-3">
         {icon}
-        <div className="space-y-3 flex-1">
+        <div className="space-y-3 flex-1 min-w-0">
           <div>
             <h3 className="font-serif text-base font-semibold text-ink">{title}</h3>
-            <p className="mt-1 text-sm text-ink">{detail.summary}</p>
+            <p className="mt-1 text-sm leading-relaxed text-ink">{detail.summary}</p>
           </div>
 
-          <dl className="grid grid-cols-1 gap-3 rounded-md border border-border-subtle bg-surface p-3.5 text-xs sm:grid-cols-2">
+          <dl className="grid grid-cols-1 gap-3 rounded-lg border border-border-subtle bg-surface p-3.5 text-xs sm:grid-cols-2">
             <div>
-              <dt className="font-semibold uppercase tracking-wide text-ink-muted">
+              <dt className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
                 {c.foundLabel}
               </dt>
               <dd className="mt-1 text-ink leading-relaxed">{detail.what_was_found}</dd>
             </div>
             <div>
-              <dt className="font-semibold uppercase tracking-wide text-ink-muted">
+              <dt className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
                 {c.missingLabel}
               </dt>
               <dd className="mt-1 text-ink leading-relaxed">{detail.what_is_missing}</dd>
             </div>
           </dl>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-1 text-xs">
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-0.5 text-xs">
             <p className="text-ink-muted">
               <strong className="font-semibold text-ink">{c.nextStepLabel}</strong>{" "}
               {detail.suggested_next_step}
@@ -115,7 +121,8 @@ export function AbstentionCard({
                 href={detail.official_verification_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 font-medium text-accent hover:underline"
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-1 rounded-md border border-accent/25 bg-surface px-2.5 py-1 font-medium text-accent transition-colors hover:bg-accent hover:text-canvas"
               >
                 <span>{c.verifyPortalLabel}</span>
                 <ExternalLink className="h-3 w-3" />

@@ -29,17 +29,17 @@ const KIND_META: Record<
 > = {
   legal_requirement: {
     label: "Law / Statutory Provision",
-    badgeClass: "bg-accent-soft text-accent border border-accent/20",
+    badgeClass: "bg-accent-soft text-accent border border-accent/25",
     icon: <Scale className="h-3 w-3" />,
   },
   conditional_requirement: {
     label: "Conditional Requirement",
-    badgeClass: "bg-navy-soft text-navy border border-navy/20",
+    badgeClass: "bg-navy-soft text-navy border border-navy/25",
     icon: <Scale className="h-3 w-3" />,
   },
   practical_suggestion: {
     label: "Practical Suggestion (Advice)",
-    badgeClass: "bg-amber-100 text-amber-700 border border-amber-700/20",
+    badgeClass: "bg-amber-100 text-amber-700 border border-amber-700/25",
     icon: <Lightbulb className="h-3 w-3" />,
   },
   professional_confirmation: {
@@ -102,7 +102,7 @@ export function ActionPlanner({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Action Plan Steps */}
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -118,7 +118,7 @@ export function ActionPlanner({
             <button
               type="button"
               onClick={handleCopy}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-surface px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-muted"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border-subtle bg-canvas px-3 py-1.5 text-xs font-medium text-ink transition-colors hover:border-accent/40 hover:bg-accent-soft hover:text-accent"
             >
               {copied ? <Check className="h-3.5 w-3.5 text-accent" /> : <Copy className="h-3.5 w-3.5" />}
               <span>{copied ? t.copiedPlanBtn : t.copyPlanBtn}</span>
@@ -127,7 +127,7 @@ export function ActionPlanner({
         </div>
 
         {actionPlan.length === 0 ? (
-          <div className="rounded-lg border border-border-subtle bg-surface p-5 text-sm text-ink-muted">
+          <div className="rounded-xl border border-border-subtle bg-canvas/75 p-5 text-xs leading-relaxed text-ink-muted">
             {t.emptyRightDescPlanner}
           </div>
         ) : (
@@ -137,7 +137,7 @@ export function ActionPlanner({
               return (
                 <li
                   key={idx}
-                  className="rounded-lg border border-border-subtle bg-surface p-4 shadow-sm"
+                  className="rounded-xl border border-border-subtle bg-canvas/60 p-4 transition-colors hover:border-sage"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span
@@ -169,7 +169,7 @@ export function ActionPlanner({
       </div>
 
       {/* Complaint Readiness Checker (Non-adjudicative) */}
-      <div className="rounded-lg border border-border-subtle bg-canvas p-5 space-y-4">
+      <div className="rounded-xl border border-border-subtle bg-canvas p-4 space-y-3.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h4 className="font-serif text-sm font-semibold text-ink">
@@ -179,12 +179,12 @@ export function ActionPlanner({
               {t.readinessSubtitle}
             </p>
           </div>
-          <span className="rounded-full border border-border-subtle bg-surface px-2.5 py-0.5 text-xs font-medium text-ink">
+          <span className="rounded-full border border-accent/25 bg-accent-soft px-2.5 py-0.5 text-xs font-semibold text-accent">
             {completedCount}/{READINESS_ITEMS.length} ready
           </span>
         </div>
 
-        <ul className="space-y-2">
+        <ul className="space-y-1.5">
           {READINESS_ITEMS.map((item) => {
             const isDone = !!checked[item.id];
             return (
@@ -192,14 +192,14 @@ export function ActionPlanner({
                 <button
                   type="button"
                   onClick={() => toggle(item.id)}
-                  className="flex w-full items-start gap-2.5 rounded-md border border-border-subtle bg-surface px-3 py-2 text-left text-xs transition-colors hover:bg-surface-muted/50"
+                  className="flex w-full items-start gap-2.5 rounded-lg border border-border-subtle bg-surface px-3 py-2 text-left text-xs transition-colors hover:border-sage"
                 >
                   {isDone ? (
                     <CheckSquare className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
                   ) : (
-                    <Square className="mt-0.5 h-4 w-4 shrink-0 text-ink-muted" />
+                    <Square className="mt-0.5 h-4 w-4 shrink-0 text-sage" />
                   )}
-                  <span className={isDone ? "text-ink line-through opacity-75" : "text-ink"}>
+                  <span className={isDone ? "text-ink-muted line-through" : "text-ink"}>
                     {item.label}
                   </span>
                 </button>
@@ -208,7 +208,7 @@ export function ActionPlanner({
           })}
         </ul>
 
-        {/* Neutral Draft Complaint Summary (FR-16) */}
+        {/* Neutral Draft Complaint Summary */}
         <div className="border-t border-border-subtle pt-3">
           <button
             type="button"
@@ -222,8 +222,8 @@ export function ActionPlanner({
           </button>
 
           {showDraft && (
-            <div className="mt-3 space-y-3 rounded-md border border-border-subtle bg-surface p-4 text-xs">
-              <div className="rounded bg-amber-100/70 px-3 py-2 text-[11px] text-amber-700">
+            <div className="mt-3 space-y-3 rounded-xl border border-border-subtle bg-surface p-4 text-xs animate-satya-in">
+              <div className="rounded-lg bg-amber-100 px-3 py-2 text-[11px] text-amber-700">
                 <strong>Draft Notice:</strong> This neutral summary is for your own review and offline editing. Satya never submits complaints automatically and this draft is not legal advice. Do not enter OTPs, passwords, Aadhaar, or full card numbers.
               </div>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -232,21 +232,21 @@ export function ActionPlanner({
                   value={draftPlatform}
                   onChange={(e) => setDraftPlatform(e.target.value)}
                   placeholder="Seller / Platform name"
-                  className="rounded border border-border-subtle bg-canvas px-2.5 py-1.5 text-xs text-ink"
+                  className="rounded-lg border border-border-subtle bg-canvas px-2.5 py-1.5 text-xs text-ink focus:border-accent focus:outline-none"
                 />
                 <input
                   type="text"
                   value={draftDate}
                   onChange={(e) => setDraftDate(e.target.value)}
                   placeholder="Purchase / Issue date"
-                  className="rounded border border-border-subtle bg-canvas px-2.5 py-1.5 text-xs text-ink"
+                  className="rounded-lg border border-border-subtle bg-canvas px-2.5 py-1.5 text-xs text-ink focus:border-accent focus:outline-none"
                 />
                 <input
                   type="text"
                   value={draftAmount}
                   onChange={(e) => setDraftAmount(e.target.value)}
                   placeholder="Amount paid (₹)"
-                  className="rounded border border-border-subtle bg-canvas px-2.5 py-1.5 text-xs text-ink"
+                  className="rounded-lg border border-border-subtle bg-canvas px-2.5 py-1.5 text-xs text-ink focus:border-accent focus:outline-none"
                 />
               </div>
               <input
@@ -254,9 +254,9 @@ export function ActionPlanner({
                 value={draftRelief}
                 onChange={(e) => setDraftRelief(e.target.value)}
                 placeholder="Requested resolution"
-                className="w-full rounded border border-border-subtle bg-canvas px-2.5 py-1.5 text-xs text-ink"
+                className="w-full rounded-lg border border-border-subtle bg-canvas px-2.5 py-1.5 text-xs text-ink focus:border-accent focus:outline-none"
               />
-              <pre className="whitespace-pre-wrap rounded border border-border-subtle bg-canvas p-3 font-sans text-xs leading-relaxed text-ink">
+              <pre className="whitespace-pre-wrap rounded-lg border border-border-subtle bg-canvas p-3 font-sans text-xs leading-relaxed text-ink">
 {`DRAFT CONSUMER GRIEVANCE SUMMARY (FOR USER REVIEW ONLY)
 Opposite Party / Seller / Platform: ${draftPlatform || "[Seller / Service Provider Name]"}
 Date of Transaction / Cause of Action: ${draftDate || "[Date]"}
